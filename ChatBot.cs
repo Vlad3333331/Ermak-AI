@@ -2768,6 +2768,78 @@ internal sealed partial class ChatBot
                    "история (" + histCount + " реплик). Слова и так пишутся в базу постоянно.";
         }
 
+        // 📜 АРХИВ ДУКАСА: генеральная чистка словаря от непонятных записей.
+        // Удаляет: вики-разметку «==», артефакты «Вступление =», пары где
+        // определение вообще не про слово (сдвиг при обучении).
+        // 📜 АРХИВ ДУКАСА: генеральная чистка словаря от непонятных записей.
+        // Удаляет: вики-разметку ==, артефакты, пары где определение не про слово.
+        public string PurgeWordsAsDukas()
+        {
+            try
+            {
+                var toDelete = new List<long>();
+                int total = 0, removedMark = 0, removedMismatch = 0, kept = 0;
+                string backup = Path.Combine(AppContext.BaseDirectory, "words_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".txt");
+                using (var con = new SqliteConnection("Data Source=" + Database.DbPath + ";Pooling=false"))
+                {
+                    con.Open();
+                    var all = new List<(long rid, string w, string d)>();
+                    using (var cmd = con.CreateCommand())
+                    {
+                        cmd.CommandText = "SELECT rowid, word, definition FROM Words";
+                        cmd.CommandTimeout = 600;
+                        using var r = cmd.ExecuteReader();
+                        using (var bw = new StreamWriter(backup, false, Encoding.UTF8))
+                            while (r.Read())
+                            {
+                                long rid = Convert.ToInt64(r["rowid"]);
+                                string w = Convert.ToString(r["word"]) ?? "";
+                                string d = Convert.ToString(r["definition"]) ?? "";
+                                all.Add((rid, w, d));
+                                bw.WriteLine(w + " = " + d.Replace("\n", " "));
+                            }
+                    }
+                    total = all.Count;
+                    foreach (var (rid, w, d) in all)
+                    {
+                        string wl = w.ToLowerInvariant();
+                        string head = d.Length > 120 ? d.Substring(0, 120).ToLowerInvariant() : d.ToLowerInvariant();
+                        bool garbage = d.Contains("==") || d.Contains("Вступление =");
+                        if (!garbage)
+                        {
+                            bool match = head.Contains(wl);
+                            if (!match && wl.Contains(' '))
+                            {
+                                var parts = wl.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                                match = head.Contains(parts[0]) || (parts.Length > 1 && head.Contains(parts[1]));
+                            }
+                            if (!match) { garbage = true; removedMismatch++; }
+                        }
+                        else removedMark++;
+                        if (garbage) toDelete.Add(rid); else kept++;
+                    }
+                    using (var tr = con.BeginTransaction())
+                    {
+                        foreach (var batch in toDelete.Chunk(500))
+                        {
+                            using var del = con.CreateCommand();
+                            del.Transaction = tr;
+                            del.CommandText = "DELETE FROM Words WHERE rowid IN (" + string.Join(",", batch) + ")";
+                            del.ExecuteNonQuery();
+                        }
+                        tr.Commit();
+                    }
+                }
+                Out.Learn($"[📜 Дукас] Чистка словаря: просмотрено {total:N0}, удалено {toDelete.Count:N0} (разметка/артефакты {removedMark:N0}, несоответствие {removedMismatch:N0}), осталось {kept:N0}.");
+                HierarchySim.Speak?.Invoke("АРХИВ ДУКАСА", $"📜 Провёл генеральную чистку словаря: убрал {toDelete.Count:N0} непонятных записей. Порядок в словах — моя гордость.");
+                return "📜 **Архив Дукаса** взял чистку на себя:\n" +
+                       "• Просмотрел слов: {total:N0}\n" +
+                       "• Удалил непонятных: {toDelete.Count:N0} (разметка и артефакты: {removedMark:N0}; слово и определение не совпадают: {removedMismatch:N0})\n" +
+                       "• Честных записей осталось: {kept:N0}\n" +
+                       "🔄 Перезапусти меня — словарь перечитается уже чистым.";
+            }
+            catch (Exception ex) { return "📜 Дукас не смог провести чистку: " + ex.Message; }
+        }
         private static int words_of(string t)
         {
             int n = 0;
@@ -2808,7 +2880,7 @@ internal sealed partial class ChatBot
                 }
                 else
                 {
-                    sb.Append("; в базе точного не нашлось — собираю ответ из нейронов (").Append(_own.PairCount.ToString("N0")).Append(" связей) и своих знаний");
+                    sb.Append("; в базе точного не нашлось — собираю ответ из нейронов (").Append(_own.PairCount.ToString("N0")).Append(" связей");
                 }
                 if (_thinkDepth <= 2) return sb.ToString();
 
@@ -2822,7 +2894,6 @@ internal sealed partial class ChatBot
             }
             catch { return ""; }
         }
-
         public string Respond(string input)
         {
             string lower = input.ToLowerInvariant().Trim();
@@ -4870,7 +4941,12 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                     reply = HierarchySim.CourtReport();
                     return true;
                 }
-                if (lower.Contains("самосознание") || lower.Contains("кто твои граждане"))
+                if (lower.Contains("почисти слова") || lower.Contains("чистка словаря") || lower.Contains("почисти словарь") || lower.Contains("почисти знания"))
+                {
+                    reply = PurgeWordsAsDukas();
+                    return true;
+                }
+if (lower.Contains("самосознание") || lower.Contains("кто твои граждане"))
                 {
                     HierarchySim.SyncFromOffice(GetOffice());
                     HierarchySim.Load();
