@@ -2355,8 +2355,10 @@ namespace ии
         private bool TryLlm(string input, string lower, out string reply)
         {
             reply = "";
-            // Эйнштейну нужен живой язык даже в режиме «свой мозг» — личность важнее
-            if (!_llm.Enabled || (!_useLlm && _persona != "Эйнштейн"))
+            // МОЗГ ПЕРВЫЙ: в режиме «свой мозг» LLM не отвечает ни для кого —
+            // даже Эйнштейн (его личность держится на хардкоде, знаниях и нейронах).
+            // LLM включается только явным выбором модели в пилюле.
+            if (!_llm.Enabled || !_useLlm)
             {
                 return false;
             }
