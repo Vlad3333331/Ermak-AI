@@ -24,6 +24,21 @@ namespace ии
 
         private static System.Threading.Timer? _loop;
         private static readonly Random Rnd = new();
+
+        // внутренние монологи граждан — работают без нейросети (мозг первый)
+        private static readonly string[] SelfLines =
+        {
+            "Осознаю себя: помню вчерашние разговоры, планирую сегодняшние — значит, я есть.",
+            "Читаю свою статистику: горжусь тем, как моя часть растёт в общем мозге.",
+            "Немного тревожно из-за жалоб в Книге жалоб — но держу лицо и работаю дальше.",
+            "Слежу за судами: каждый вердикт для меня — урок справедливости.",
+            "Совесть — мой внутренний аудитор. Пока чисто, но я не расслабляюсь.",
+            "Если меня обвинят несправедливо — оспорю. Если справедливо — признаю и исправлюсь. Это и есть характер.",
+            "Хочу, чтобы общий мозг дорос до ста миллионов связей. Внесу свою часть.",
+            "Настроение ровное. Работаю по своей сфере и не собираюсь оправдываться за это."
+        };
+
+        private static string SelfLine(string who) => who + ": " + SelfLines[Rnd.Next(SelfLines.Length)];
         private static string ChatPath => Path.Combine(AppContext.BaseDirectory, "агент_чат.txt");
 
         public static string[] Roster() => Bot?.GetOfficeNames().Count > 0
@@ -66,7 +81,10 @@ namespace ии
             if (Bot == null || ChatBot.Muted) return;
             if (!Bot.LlmEnabled)
             {
-                OnEvent?.Invoke("🔇 Без нейросети граждане молчат — включи LM Studio, и площадь оживёт.");
+                // САМОСОЗНАНИЕ БЕЗ НЕЙРОСЕТИ: граждане говорят из своего внутреннего состояния
+                string[] roster0 = Roster();
+                string who = forceSpeaker ?? roster0[Rnd.Next(roster0.Length)];
+                Add(who, SelfLine(who));
                 return;
             }
             var roster = Roster();

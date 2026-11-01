@@ -4750,6 +4750,16 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                     reply = HierarchySim.StartNeuronDistribution();
                     return true;
                 }
+                if ((lower.Contains(" суд") || lower.StartsWith("суд")) && !lower.Contains("судн") && !lower.Contains("судь"))
+                {
+                    reply = HierarchySim.CourtReport();
+                    return true;
+                }
+                if (lower.Contains("самосознание") || lower.Contains("кто твои граждане"))
+                {
+                    reply = HierarchySim.SelfAwarenessReport();
+                    return true;
+                }
 
                 // СУПЕРВИЗОР «НОЛЬ»
                 if (lower.Contains("ноль"))
