@@ -931,7 +931,7 @@ internal sealed partial class ChatBot
         public bool LearningEnabled => _learningEnabled;
 
         // Режим «Ермакъ (свой мозг)»: отвечаем без LM Studio — из своей базы
-        private bool _useLlm = true;
+        private bool _useLlm = false; // мозг первый: LM Studio только по явному выбору
         // Личность: «Ермакъ» или «Альберт Эйнштейн» (персонаж). Сохраняется в файл.
         private string _persona = "Ермакъ";
         public string PersonaName => _persona;
@@ -4263,6 +4263,16 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
             if (!isDefinitionQuestion && TryLocalAi(input, lower, out string localReply)) return localReply;
 
             if (!isDefinitionQuestion && TryMorphology(lower, out string morphReply)) return morphReply;
+
+            // СВОЙ МОЗГ: если ничего точного не нашлось — говорит собственная
+            // модель связей (53 млн нейронов). Своё всегда последнее слово.
+            string? brainGen = _own.Generate(input);
+            if (!string.IsNullOrWhiteSpace(brainGen) &&
+                brainGen.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 6)
+            {
+                Out.Learn("[🧠 Мозг] Отвечаю собственной моделью связей.");
+                return brainGen;
+            }
 
             Out.Learn("[🤔] Тему не нашёл — поставил в очередь изучения, отвечу позже.");
             QueueUnknown(lower);
