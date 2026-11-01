@@ -43,16 +43,16 @@ namespace ии
                 BorderStyle = BorderStyle.None,
                 Font = new Font("Consolas", 9.5F),
             };
-            _grid.Columns.Add("Страна-Питомец", 190);
-            _grid.Columns.Add("Роль (сфера)", 255);
+            _grid.Columns.Add("Страна-Питомец", 175);
+            _grid.Columns.Add("Роль (сфера)", 320);
             NumCol("ВВП", 85);
             NumCol("Казна", 85);
             NumCol("Ресурсы", 90);
-            NumCol("Воен.", 60);
-            NumCol("Недов.", 65);
-            _grid.Columns.Add("Лидер", 120);
-            NumCol("Младшие", 90);
-            NumCol("HitRate", 75);
+            NumCol("Воен.", 55);
+            NumCol("Недов.", 60);
+            _grid.Columns.Add("Лидер", 105);
+            NumCol("Младшие", 85);
+            NumCol("HitRate", 70);
             var gridHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10, 6, 10, 4), BackColor = Color.FromArgb(13, 20, 32) };
             gridHost.Controls.Add(_grid);
 
