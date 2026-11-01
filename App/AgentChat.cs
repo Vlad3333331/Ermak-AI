@@ -143,7 +143,8 @@ namespace ии
         public AgentChatForm()
         {
             Text = "💬 Чат агентов — Городская площадь";
-            Size = new Size(760, 560);
+            Size = new Size(880, 640);
+            MinimumSize = new Size(620, 460);
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.FromArgb(13, 20, 32);
 
@@ -160,7 +161,7 @@ namespace ии
             };
             logHost.Controls.Add(_log);
 
-            var bar = new Panel { Dock = DockStyle.Bottom, Height = 46, BackColor = Color.FromArgb(19, 28, 43) };
+            var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 48, BackColor = Color.FromArgb(19, 28, 43), FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(8, 8, 0, 0), WrapContents = true };
             Button Mk(string t, int w) => new Button { Text = t, Width = w, Height = 30, FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 }, ForeColor = Color.FromArgb(232, 238, 245), BackColor = Color.FromArgb(23, 33, 50), Font = new Font("Segoe UI", 9F), Cursor = Cursors.Hand };
             var pulse = Mk("⚡ Импульс", 110);
             var meeting = Mk("🧠 Консилиум", 120);

@@ -362,7 +362,7 @@ namespace ии
                     Exec(con, "DELETE FROM Countries; DELETE FROM SubPets;");
                     foreach (var c in Countries)
                     {
-                        Exec(con, "INSERT INTO Countries VALUES('" + Esc(c.Name) + "','" + Esc(c.Role) + "'," + c.Gdp + "," + c.Resources + "," + c.Treasury + "," + c.Military + "," + c.Unrest + ",'" + Esc(c.Leader) + "'," + c.LeaderTerms + ");");
+                        Exec(con, "INSERT OR REPLACE INTO Countries VALUES('" + Esc(c.Name) + "','" + Esc(c.Role) + "'," + c.Gdp + "," + c.Resources + "," + c.Treasury + "," + c.Military + "," + c.Unrest + ",'" + Esc(c.Leader) + "'," + c.LeaderTerms + ");");
                         foreach (var s in c.SubPets)
                             Exec(con, "INSERT OR REPLACE INTO SubPets VALUES('" + Esc(s.Name) + "','" + Esc(c.Name) + "','" + Esc(s.Sphere) + "'," + s.HitRate + "," + s.Loyalty + ");");
                     }
@@ -398,7 +398,20 @@ namespace ии
                                 Leader = Convert.ToString(r["Leader"]) ?? "",
                                 LeaderTerms = Convert.ToInt32(r["LeaderTerms"]),
                             };
-                            Countries.Add(c);
+                            var ex = Countries.FirstOrDefault(x => x.Name == c.Name);
+                            if (ex == null) Countries.Add(c);
+                            else
+                            {
+                                // слияние: сохранённая история сильнее свежесозданной болванки
+                                ex.Gdp = Math.Max(ex.Gdp, c.Gdp);
+                                ex.Resources = Math.Max(ex.Resources, c.Resources);
+                                ex.Treasury = Math.Max(ex.Treasury, c.Treasury);
+                                ex.Military = Math.Max(ex.Military, c.Military);
+                                ex.Unrest = Math.Max(ex.Unrest, c.Unrest);
+                                ex.LeaderTerms = Math.Max(ex.LeaderTerms, c.LeaderTerms);
+                                if (!string.IsNullOrWhiteSpace(c.Leader)) ex.Leader = c.Leader;
+                                if (string.IsNullOrWhiteSpace(ex.Role)) ex.Role = c.Role;
+                            }
                         }
                     }
                     using (var cmd = con.CreateCommand())
@@ -409,6 +422,8 @@ namespace ии
                         {
                             var c = Countries.FirstOrDefault(x => x.Name == Convert.ToString(r["Country"]));
                             if (c == null) continue;
+                            string nm = Convert.ToString(r["Name"]) ?? "";
+                            if (c.SubPets.Any(s => s.Name == nm)) continue; // без дублей жителей
                             c.SubPets.Add(new SubPet
                             {
                                 Name = Convert.ToString(r["Name"]) ?? "",

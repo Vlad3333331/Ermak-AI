@@ -172,11 +172,11 @@ namespace ии
             micro.Location = new Point(0, 218);
             micro.Size = new Size(232, 32);
 
-            var tasksLbl = new Label { Text = "TASK LIST", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = ColMuted, BackColor = ColSide, Location = new Point(6, 158), AutoSize = true };
-            var delBtn = new RoundButton { Text = "🗑", Size = new Size(28, 22), Location = new Point(206, 154), Fill = ColSide, FillHover = Color.FromArgb(80, 30, 30), Fore = ColMuted, Radius = 6, Font = new Font("Segoe UI", 9F) };
+            var tasksLbl = new Label { Text = "TASK LIST", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = ColMuted, BackColor = ColSide, Location = new Point(6, 258), AutoSize = true };
+            var delBtn = new RoundButton { Text = "🗑", Size = new Size(28, 22), Location = new Point(206, 254), Fill = ColSide, FillHover = Color.FromArgb(80, 30, 30), Fore = ColMuted, Radius = 6, Font = new Font("Segoe UI", 9F) };
             delBtn.Click += (s, e) => DeleteSelectedTask();
 
-            _searchBox.Location = new Point(4, 176);
+            _searchBox.Location = new Point(4, 276);
             _searchBox.Width = 226;
             _searchBox.Height = 26;
             _searchBox.BackColor = ColInput;
@@ -185,7 +185,7 @@ namespace ии
             _searchBox.TextChanged += (s, e) => RenderTaskList();
             _searchBox.PlaceholderText = "Поиск по задачам…";
 
-            _taskList.Location = new Point(0, 204);
+            _taskList.Location = new Point(0, 304);
             _taskList.Size = new Size(236, 999);
             _taskList.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _taskList.BackColor = ColSide;
