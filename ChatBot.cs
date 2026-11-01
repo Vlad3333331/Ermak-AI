@@ -4752,11 +4752,15 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                 }
                 if ((lower.Contains(" суд") || lower.StartsWith("суд")) && !lower.Contains("судн") && !lower.Contains("судь"))
                 {
+                    HierarchySim.SyncFromOffice(GetOffice());
+                    HierarchySim.Load(); // граждане и мир доступны даже без открытого Микро-мира
                     reply = HierarchySim.CourtReport();
                     return true;
                 }
                 if (lower.Contains("самосознание") || lower.Contains("кто твои граждане"))
                 {
+                    HierarchySim.SyncFromOffice(GetOffice());
+                    HierarchySim.Load();
                     reply = HierarchySim.SelfAwarenessReport();
                     return true;
                 }
