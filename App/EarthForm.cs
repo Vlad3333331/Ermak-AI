@@ -44,7 +44,7 @@ namespace ии
                 Font = new Font("Consolas", 9.5F),
             };
             _grid.Columns.Add("Страна-Питомец", 175);
-            _grid.Columns.Add("Роль (сфера)", 320);
+            _grid.Columns.Add("Роль (сфера)", 360);
             NumCol("Нейроны", 95);
             NumCol("ВВП", 85);
             NumCol("Казна", 85);

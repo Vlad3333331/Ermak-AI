@@ -906,6 +906,7 @@ internal sealed class OwnModel
 	private long _lastSaveTicks;
 
 	private readonly object _saveLock = new object();
+	private readonly KeyValuePair<string, int>[] _topBuf = new KeyValuePair<string, int>[5]; // без аллокаций в горячем цикле
 
 	// Инкрементальное сохранение: связи, изменившиеся с последнего FlushPending().
 	// Позволяет модели расти до миллионов строк без полной перезаписи таблицы на каждом цикле обучения.
@@ -1124,12 +1125,29 @@ internal sealed class OwnModel
 			{
 				value = _next.GetValueOrDefault(text);
 			}
-			if (value == null || value.Count == 0 || value.Values.Sum() <= 0)
+			if (value == null || value.Count == 0)
 			{
 				break;
 			}
-			List<KeyValuePair<string, int>> list3 = value.OrderByDescending((KeyValuePair<string, int> kv) => kv.Value).Take(5).ToList();
-			int maxValue = list3.Sum((KeyValuePair<string, int> kv) => kv.Value);
+			// ручной top-5 без LINQ-аллокаций на каждом шаге генерации
+			var list3 = _topBuf;
+			int len3 = 0, maxValue = 0;
+			foreach (KeyValuePair<string, int> kv in value)
+			{
+				if (len3 < 5)
+				{
+					list3[len3++] = kv; maxValue += kv.Value;
+					if (len3 == 5)
+					for (int a = 4; a > 0; a--)
+					if (list3[a].Value > list3[a - 1].Value) (list3[a], list3[a - 1]) = (list3[a - 1], list3[a]);
+				}
+				else if (kv.Value > list3[4].Value)
+				{
+					maxValue += kv.Value - list3[4].Value;
+					list3[4] = kv;
+					for (int a = 4; a > 0 && list3[a].Value > list3[a - 1].Value; a--) (list3[a], list3[a - 1]) = (list3[a - 1], list3[a]);
+				}
+			}
 			int num2 = _rng.Next(maxValue);
 			string key2 = list3[0].Key;
 			foreach (KeyValuePair<string, int> item in list3)
@@ -1369,12 +1387,13 @@ internal sealed class OwnModel
 		{
 			using SqliteConnection sqliteConnection = new SqliteConnection("Data Source=" + Database.DbPath + ";Pooling=false");
 			sqliteConnection.Open();
+			try { using var mm = sqliteConnection.CreateCommand(); mm.CommandText = "PRAGMA mmap_size=4294967296;"; mm.ExecuteNonQuery(); } catch { }
 			SqliteCommand sqliteCommand = sqliteConnection.CreateCommand();
-			// В серверном режиме берём максимум связей, который допустимо влезает в 512 МБ ОЗУ
-			// (замеры: 300 тыс. ≈ 221 МБ, 500 тыс. ≈ 352 МБ, 650 тыс. ≈ 400 МБ; 700 тыс. — уже рискованно)
+			// БЕЗ ORDER BY: порядок строк словарям не нужен, а сортировка 50+ млн строк
+			// съедала минуты на каждом старте. LIMIT — только предохранитель ОЗУ.
 			sqliteCommand.CommandText = Database.ServerMode
-				? "SELECT prefix, key, next_word, count FROM OwnModel ORDER BY count DESC LIMIT 650000"
-				: "SELECT prefix, key, next_word, count FROM OwnModel ORDER BY count DESC LIMIT 50000000";
+				? "SELECT prefix, key, next_word, count FROM OwnModel LIMIT 650000"
+				: "SELECT prefix, key, next_word, count FROM OwnModel LIMIT 200000000";
 			long totalRows = 0; long loadedRows = 0; long nextMilestone = 2000000;
 try { using var cnt = sqliteConnection.CreateCommand(); cnt.CommandText = "SELECT COUNT(*) FROM OwnModel"; totalRows = Convert.ToInt64(cnt.ExecuteScalar()); } catch { }
 using SqliteDataReader sqliteDataReader = sqliteCommand.ExecuteReader();
@@ -1398,8 +1417,7 @@ using SqliteDataReader sqliteDataReader = sqliteCommand.ExecuteReader();
 						value = new Dictionary<string, int>();
 						_tri[key] = value;
 					}
-					if (!value.ContainsKey(key2)) { _trigramTotal++; _pairTotal++; }
-					value[key2] = @int;
+					if (!value.TryAdd(key2, @int)) value[key2] = @int; else { _trigramTotal++; _pairTotal++; }
 				}
 				else
 				{
@@ -1408,8 +1426,7 @@ using SqliteDataReader sqliteDataReader = sqliteCommand.ExecuteReader();
 						value2 = new Dictionary<string, int>();
 						_next[key] = value2;
 					}
-					if (!value2.ContainsKey(key2)) { _bigramTotal++; _pairTotal++; }
-					value2[key2] = @int;
+					if (!value2.TryAdd(key2, @int)) value2[key2] = @int; else { _bigramTotal++; _pairTotal++; }
 				}
 			}
 		}

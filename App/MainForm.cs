@@ -133,19 +133,16 @@ namespace ии
             // ── Левая панель ──
             var sidebar = new Panel { Dock = DockStyle.Left, Width = 252, BackColor = ColSide, Padding = new Padding(10, 12, 8, 8) };
 
-            var logo = new Label { Text = "Е", Font = new Font("Segoe UI", 13F, FontStyle.Bold), ForeColor = ColAccent, BackColor = Color.FromArgb(50, 32, 24), Size = new Size(34, 34), TextAlign = ContentAlignment.MiddleCenter, Location = new Point(4, 2) };
-            var logoName = new Label { Text = "ЕРМАКЪ", Font = new Font("Segoe UI", 11F, FontStyle.Bold), ForeColor = ColText, BackColor = ColSide, AutoSize = true, Location = new Point(46, 10) };
-
             var newTask = MakeSideItem("＋  New task", "Ctrl+N", () => StartNewSession());
-            newTask.Location = new Point(0, 44);
+            newTask.Location = new Point(0, 8);
             newTask.Size = new Size(232, 34);
 
             var automations = MakeSideItem("⚙  Automations", "", () => ShowAutomations());
-            automations.Location = new Point(0, 82);
+            automations.Location = new Point(0, 46);
             automations.Size = new Size(232, 32);
 
             var market = MakeSideItem("🧩  Skills — навыки", "", () => ShowSkills());
-            market.Location = new Point(0, 116);
+            market.Location = new Point(0, 80);
             market.Size = new Size(232, 32);
 
             var organogram = MakeSideItem("🌳  Органограмма", "", () =>
@@ -153,7 +150,7 @@ namespace ии
                 if (_bot == null) { SetStatus(ColYellow, "Ещё загружаюсь…"); return; }
                 new OrganogramForm(_bot).Show();
             });
-            organogram.Location = new Point(0, 150);
+            organogram.Location = new Point(0, 114);
             organogram.Size = new Size(232, 32);
 
             var agentChat = MakeSideItem("💬  Чат агентов", "", () =>
@@ -161,7 +158,7 @@ namespace ии
                 if (_bot == null) { SetStatus(ColYellow, "Ещё загружаюсь…"); return; }
                 new AgentChatForm().Show();
             });
-            agentChat.Location = new Point(0, 184);
+            agentChat.Location = new Point(0, 148);
             agentChat.Size = new Size(232, 32);
 
             var micro = MakeSideItem("🌍  Микро-мир", "", () =>
@@ -169,14 +166,14 @@ namespace ии
                 if (_bot == null) { SetStatus(ColYellow, "Ещё загружаюсь…"); return; }
                 new EarthForm(_bot).Show();
             });
-            micro.Location = new Point(0, 218);
+            micro.Location = new Point(0, 182);
             micro.Size = new Size(232, 32);
 
-            var tasksLbl = new Label { Text = "TASK LIST", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = ColMuted, BackColor = ColSide, Location = new Point(6, 258), AutoSize = true };
-            var delBtn = new RoundButton { Text = "🗑", Size = new Size(28, 22), Location = new Point(206, 254), Fill = ColSide, FillHover = Color.FromArgb(80, 30, 30), Fore = ColMuted, Radius = 6, Font = new Font("Segoe UI", 9F) };
+            var tasksLbl = new Label { Text = "TASK LIST", Font = new Font("Segoe UI", 7.5F, FontStyle.Bold), ForeColor = ColMuted, BackColor = ColSide, Location = new Point(6, 222), AutoSize = true };
+            var delBtn = new RoundButton { Text = "🗑", Size = new Size(28, 22), Location = new Point(206, 218), Fill = ColSide, FillHover = Color.FromArgb(80, 30, 30), Fore = ColMuted, Radius = 6, Font = new Font("Segoe UI", 9F) };
             delBtn.Click += (s, e) => DeleteSelectedTask();
 
-            _searchBox.Location = new Point(4, 276);
+            _searchBox.Location = new Point(4, 240);
             _searchBox.Width = 226;
             _searchBox.Height = 26;
             _searchBox.BackColor = ColInput;
@@ -185,7 +182,7 @@ namespace ии
             _searchBox.TextChanged += (s, e) => RenderTaskList();
             _searchBox.PlaceholderText = "Поиск по задачам…";
 
-            _taskList.Location = new Point(0, 304);
+            _taskList.Location = new Point(0, 268);
             _taskList.Size = new Size(236, 999);
             _taskList.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             _taskList.BackColor = ColSide;
@@ -226,7 +223,7 @@ namespace ии
             gear.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             gear.Click += (s, e) => ShowAutomations();
 
-            sidebar.Controls.AddRange(new Control[] { logo, logoName, newTask, automations, market, organogram, agentChat, micro, tasksLbl, delBtn, _searchBox, _taskList, avatar, gear });
+            sidebar.Controls.AddRange(new Control[] { newTask, automations, market, organogram, agentChat, micro, tasksLbl, delBtn, _searchBox, _taskList, avatar, gear });
 
             // ── Правая карточка прогресса ──
             var progressWrap = new Panel { Dock = DockStyle.Right, Width = 248, BackColor = ColBg, Padding = new Padding(10, 52, 12, 10) };
