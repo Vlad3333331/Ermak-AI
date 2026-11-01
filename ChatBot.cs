@@ -4735,6 +4735,11 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                     reply = CompactDatabaseStart();
                     return true;
                 }
+                if (lower.Contains("распредели нейроны") || lower.Contains("раздай нейроны") || lower.Contains("перепись нейронов"))
+                {
+                    reply = HierarchySim.StartNeuronDistribution();
+                    return true;
+                }
 
                 // СУПЕРВИЗОР «НОЛЬ»
                 if (lower.Contains("ноль"))

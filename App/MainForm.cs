@@ -349,7 +349,7 @@ namespace ии
             bool fullAccess = ComputerUse.Enabled;
             _modeBtn.Text = fullAccess ? "🔓 Полный доступ" : "🛡 Обычный режим";
             _modeBtn.Size = new Size(126, 22);
-            _modeBtn.Location = new Point(2, 40);
+            _modeBtn.Location = new Point(12, 40);
             _modeBtn.Fill = ColInput; _modeBtn.FillHover = ColCardHi;
             _modeBtn.Fore = fullAccess ? ColAccent : ColMuted;
             _modeBtn.Radius = 12;
@@ -368,7 +368,7 @@ namespace ии
 
             _modelBtn.Text = "🧠 Ермакъ (свой мозг)";
             _modelBtn.Size = new Size(148, 22);
-            _modelBtn.Location = new Point(132, 40);
+            _modelBtn.Location = new Point(150, 40);
             _modelBtn.Fill = ColInput; _modelBtn.FillHover = ColCardHi;
             _modelBtn.Fore = ColBlue;
             _modelBtn.Radius = 12;
@@ -379,7 +379,7 @@ namespace ии
 
             _petBtn.Text = "🐾 Питомец: авто";
             _petBtn.Size = new Size(128, 22);
-            _petBtn.Location = new Point(284, 40);
+            _petBtn.Location = new Point(306, 40);
             _petBtn.Fill = ColInput; _petBtn.FillHover = ColCardHi;
             _petBtn.Fore = ColMuted; _petBtn.Radius = 12;
             _petBtn.Font = new Font("Segoe UI", 8.25F);
@@ -403,7 +403,7 @@ namespace ии
 
             _muteBtn.Text = "🔇";
             _muteBtn.Size = new Size(34, 22);
-            _muteBtn.Location = new Point(416, 40);
+            _muteBtn.Location = new Point(444, 40);
             _muteBtn.Padding = new Padding(2, 0, 0, 0);
             _muteBtn.Fill = ColInput; _muteBtn.FillHover = ColCardHi;
             _muteBtn.Fore = ColMuted; _muteBtn.Radius = 12;
@@ -445,6 +445,12 @@ namespace ии
             Controls.Add(center);
             Controls.Add(progressWrap);
             Controls.Add(sidebar);
+
+            // плавность: форма, сайдбар и список задач без мерцания
+            DoubleBuffered = true;
+            var dbProp = typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            dbProp?.SetValue(sidebar, true);
+            dbProp?.SetValue(_taskList, true);
 
             LoadModelsIntoCombo();
         }

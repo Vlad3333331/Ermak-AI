@@ -24,6 +24,8 @@ namespace ии
         }
 
         private bool _hover;
+        private float _anim; // 0..1 — плавный переход наведения
+        private readonly System.Windows.Forms.Timer _animT = new System.Windows.Forms.Timer { Interval = 15 };
 
         public RoundButton()
         {
@@ -32,10 +34,23 @@ namespace ии
             FlatAppearance.BorderSize = 0;
             Cursor = Cursors.Hand;
             TabStop = false;
+            _animT.Tick += (s, e) => StepAnim();
         }
 
-        protected override void OnMouseEnter(EventArgs e) { _hover = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { _hover = false; Invalidate(); base.OnMouseLeave(e); }
+        // плавный hover: цвет катится к цели за ~120 мс, а не щёлкает мгновенно
+        private void StepAnim()
+        {
+            float target = _hover ? 1f : 0f;
+            if (Math.Abs(_anim - target) < 0.12f) { _anim = target; _animT.Stop(); }
+            else _anim += target > _anim ? 0.12f : -0.12f;
+            Invalidate();
+        }
+
+        private static Color Lerp(Color a, Color b, float t) =>
+            Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+
+        protected override void OnMouseEnter(EventArgs e) { _hover = true; _animT.Start(); Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { _hover = false; _animT.Start(); Invalidate(); base.OnMouseLeave(e); }
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -44,7 +59,7 @@ namespace ии
             g.Clear(Parent?.BackColor ?? Color.Black);
             var rect = new Rectangle(0, 0, Width - 1, Height - 1);
             using var path = UiFx.Rounded(rect, Radius);
-            Color fill = Active ? Color.FromArgb(96, 20, 24) : _hover ? FillHover : Fill;
+            Color fill = Active ? Color.FromArgb(96, 20, 24) : Lerp(Fill, FillHover, _anim);
             Color border = Active ? Color.FromArgb(246, 110, 112) : Border;
             using (var b = new SolidBrush(fill)) g.FillPath(b, path);
             using (var p = new Pen(border, 1f)) g.DrawPath(p, path);

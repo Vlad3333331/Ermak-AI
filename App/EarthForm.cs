@@ -22,8 +22,8 @@ namespace ии
         {
             _bot = bot;
             Text = "🌍 Микро-мир — фрактальные Питомцы-Страны";
-            Size = new Size(1180, 720);
-            MinimumSize = new Size(1000, 640);
+            Size = new Size(1280, 720);
+            MinimumSize = new Size(1080, 640);
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.FromArgb(13, 20, 32);
 
@@ -45,6 +45,7 @@ namespace ии
             };
             _grid.Columns.Add("Страна-Питомец", 175);
             _grid.Columns.Add("Роль (сфера)", 320);
+            NumCol("Нейроны", 95);
             NumCol("ВВП", 85);
             NumCol("Казна", 85);
             NumCol("Ресурсы", 90);
@@ -74,6 +75,7 @@ namespace ии
             var congBtn = Mk("🌍 Конгресс");
             var saveBtn = Mk("💾 Сохранить");
             var chatBtn = Mk("💬 Площадь");
+            var neuronBtn = Mk("🧠 Нейроны");
             _auto = new CheckBox { Text = " Авто-тик", Checked = true, ForeColor = Color.FromArgb(147, 164, 184), AutoSize = true, Padding = new Padding(8, 10, 0, 0) };
             tickBtn.Click += (s, e) => DoTick();
             warBtn.Click += (s, e) => HierarchySim.Speak?.Invoke("ХРОНИКА ВОЙНЫ", HierarchySim.War());
@@ -81,14 +83,15 @@ namespace ии
             congBtn.Click += (s, e) => HierarchySim.Speak?.Invoke("ВСЕМИРНЫЙ КОНГРЕСС", HierarchySim.Congress("глобальный союз и распределение ресурсов"));
             saveBtn.Click += (s, e) => { HierarchySim.Save(); SpeechEngine.Event(_log, "💾 Мир сохранён в мир.db.", Color.FromArgb(55, 220, 242)); };
             chatBtn.Click += (s, e) => new AgentChatForm().Show(this);
+            neuronBtn.Click += (s, e) => SpeechEngine.Event(_log, HierarchySim.StartNeuronDistribution(), Color.FromArgb(55, 220, 242));
             _auto.CheckedChanged += (s, e) => _tick.Enabled = _auto.Checked;
-            foreach (var b in new[] { tickBtn, warBtn, dumaBtn, congBtn, saveBtn, chatBtn })
+            foreach (var b in new[] { tickBtn, warBtn, dumaBtn, congBtn, saveBtn, chatBtn, neuronBtn })
             {
                 b.MouseEnter += (s2, e2) => b.BackColor = Color.FromArgb(35, 50, 75);
                 b.MouseLeave += (s2, e2) => b.BackColor = Color.FromArgb(23, 33, 50);
             }
-            var buttons = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 40, BackColor = Color.FromArgb(13, 20, 32), ColumnCount = 7, RowCount = 1 };
-            for (int i = 0; i < 7; i++) buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 7));
+            var buttons = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 40, BackColor = Color.FromArgb(13, 20, 32), ColumnCount = 8, RowCount = 1 };
+            for (int i = 0; i < 8; i++) buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 8));
             buttons.Controls.Add(_auto, 0, 0);
             buttons.Controls.Add(tickBtn, 1, 0);
             buttons.Controls.Add(warBtn, 2, 0);
@@ -96,6 +99,7 @@ namespace ии
             buttons.Controls.Add(congBtn, 4, 0);
             buttons.Controls.Add(saveBtn, 5, 0);
             buttons.Controls.Add(chatBtn, 6, 0);
+            buttons.Controls.Add(neuronBtn, 7, 0);
 
             _log = new RichTextBox
             {
@@ -131,6 +135,9 @@ namespace ии
             _tick.Tick += (s, e) => DoTick();
             _tick.Start();
             RefreshGrid();
+            // первая открытая перепись: если нейроны ещё не распределялись — раздать автоматически
+            if (!HierarchySim.Countries.Any(c => c.Neurons > 0))
+                BeginInvoke(() => SpeechEngine.Event(_log, HierarchySim.StartNeuronDistribution(), Color.FromArgb(55, 220, 242)));
             SpeechEngine.Event(_log, "🌍 МИКРО-МИР СОТВОРЁН. Стран-питомцев: " + HierarchySim.Countries.Count + ". Младшие питомцы жестко привязаны к своим странам.", Color.FromArgb(55, 220, 242));
         }
 
@@ -165,6 +172,7 @@ namespace ии
             {
                 var it = new ListViewItem("🌍 " + c.Name);
                 it.SubItems.Add(c.Role);
+                it.SubItems.Add(c.Neurons.ToString("N0"));
                 it.SubItems.Add(c.Gdp.ToString("N0"));
                 it.SubItems.Add(c.Treasury.ToString("N0"));
                 it.SubItems.Add(c.Resources.ToString("N0"));

@@ -74,6 +74,7 @@ namespace ии
         public bool Fired;        // страна в упадке (питомец депортирован из офиса)
         public string Leader = "";    // изменчивый Лидер (из числа Младших Питомцев)
         public int LeaderTerms;       // срок правления без улучшений
+        public long Neurons;          // нейроны мозга, распределённые стране по её сфере
         public readonly List<SubPet> SubPets = new();  // дочерние Младшие Питомцы
         public readonly StateDuma Duma = new();
 
@@ -359,6 +360,7 @@ namespace ии
                     Exec(con, "PRAGMA journal_mode=WAL;");
                     Exec(con, "CREATE TABLE IF NOT EXISTS Countries(Name TEXT PRIMARY KEY, Role TEXT, Gdp INTEGER, Resources INTEGER, Treasury INTEGER, Military INTEGER, Unrest INTEGER, Leader TEXT, LeaderTerms INTEGER);");
                     Exec(con, "CREATE TABLE IF NOT EXISTS SubPets(Name TEXT PRIMARY KEY, Country TEXT, Sphere TEXT, HitRate INTEGER, Loyalty INTEGER);");
+                    Exec(con, "CREATE TABLE IF NOT EXISTS Neurons(Country TEXT PRIMARY KEY, Cnt INTEGER);");
                     Exec(con, "DELETE FROM Countries; DELETE FROM SubPets;");
                     foreach (var c in Countries)
                     {
@@ -366,6 +368,8 @@ namespace ии
                         foreach (var s in c.SubPets)
                             Exec(con, "INSERT OR REPLACE INTO SubPets VALUES('" + Esc(s.Name) + "','" + Esc(c.Name) + "','" + Esc(s.Sphere) + "'," + s.HitRate + "," + s.Loyalty + ");");
                     }
+                    foreach (var c in Countries.Where(c => c.Neurons > 0))
+                        Exec(con, "INSERT OR REPLACE INTO Neurons VALUES('" + Esc(c.Name) + "'," + c.Neurons + ");");
                 }
                 catch { }
             }
@@ -434,9 +438,100 @@ namespace ии
                         }
                     }
                     foreach (var c in Countries) if (c.SubPets.Count > 0) c.Duma.Reconstitute(c.SubPets);
+                    using (var cmd2 = con.CreateCommand())
+                    {
+                        cmd2.CommandText = "SELECT Country, Cnt FROM Neurons;";
+                        using var r2 = cmd2.ExecuteReader();
+                        while (r2.Read())
+                        {
+                            var cc = Countries.FirstOrDefault(x => x.Name == Convert.ToString(r2["Country"]));
+                            if (cc != null) cc.Neurons = Convert.ToInt64(r2["Cnt"]);
+                        }
+                    }
                 }
                 catch { }
             }
+        }
+
+        // ═══ ПЕРЕПИСЬ НЕЙРОНОВ: мозг из ai.db раскидывается по странам-сферам ═══
+        private static int _censusRunning;
+        private static readonly (string Country, string[] Keys)[] NeuronBuckets =
+        {
+            ("Технократия Силарда", new[] { "код", "программ", "алгоритм", "функци", "переменн", "компил", "скрипт", "байт", "массив", "отладк", "code", "algorithm", "software", "function", "program", "array", "debug", "python", "java" }),
+            ("Архив Дукаса", new[] { "документ", "архив", "закон", "истори", "файл", "письм", "статья", "книг", "document", "archive", "history", "law", "book", "file" }),
+            ("Империя Инфельда", new[] { "текст", "слов", "язык", "стих", "писател", "стил", "рассказ", "смысл", "поэз", "text", "word", "language", "poem", "story", "style" }),
+            ("Федерация Гроссмана", new[] { "сеть", "интернет", "сайт", "поиск", "ссылк", "страниц", "браузер", "протокол", "network", "web", "site", "link", "search", "browser", "http" }),
+            ("Бастион Теслы", new[] { "защит", "безопасн", "войн", "оруж", "угроз", "вирус", "атак", "оборон", "файрвол", "security", "defen", "attack", "virus", "war", "threat", "kill" }),
+            ("Метрополия Лоренца", new[] { "экономик", "деньг", "рынок", "ресурс", "торгов", "цена", "стоимост", "память", "аудит", "economy", "money", "market", "trade", "price", "memory", "cost" }),
+        };
+
+        public static string StartNeuronDistribution()
+        {
+            if (Interlocked.CompareExchange(ref _censusRunning, 1, 0) != 0)
+                return "🧠 Перепись нейронов уже идёт — смотри хронику мира.";
+            Task.Run(() =>
+            {
+                try { DistributeNeurons(); }
+                catch (Exception ex) { Speak?.Invoke("ПЕРЕПИСЬ", "❌ Ошибка переписи нейронов: " + ex.Message); }
+                finally { Interlocked.Exchange(ref _censusRunning, 0); }
+            });
+            return "🧠 Начал перепись нейронов: читаю мозг из ai.db и раскидываю по странам (1 из каждой 100). Прогресс — в хронике мира.";
+        }
+
+        private static void DistributeNeurons()
+        {
+            Speak?.Invoke("ПЕРЕПИСЬ НЕЙРОНОВ", "🧠 Открываю мозг (ai.db) и начинаю перепись по странам-сферам...");
+            long total;
+            var counts = new long[NeuronBuckets.Length];
+            long generic = 0, samples = 0;
+            using (var con = new SqliteConnection("Data Source=" + Database.DbPath + ";Pooling=false"))
+            {
+                con.Open();
+                using (var c1 = con.CreateCommand())
+                {
+                    c1.CommandText = "SELECT COUNT(*) FROM OwnModel";
+                    total = Convert.ToInt64(c1.ExecuteScalar());
+                }
+                using (var cmd = con.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT prefix, key FROM OwnModel WHERE rowid % 100 = 0";
+                    cmd.CommandTimeout = 600;
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read())
+                    {
+                        samples++;
+                        string s = (Convert.ToString(r["prefix"]) + " " + Convert.ToString(r["key"])).ToLowerInvariant();
+                        bool hit = false;
+                        for (int i = 0; i < NeuronBuckets.Length && !hit; i++)
+                            foreach (var k in NeuronBuckets[i].Keys)
+                                if (s.Contains(k)) { counts[i]++; hit = true; break; }
+                        if (!hit) generic++;
+                        if (samples % 50000 == 0)
+                            Speak?.Invoke("ПЕРЕПИСЬ", "🧠 Просчитано " + samples.ToString("N0") + " нейронов из ~" + (total / 100).ToString("N0") + "...");
+                    }
+                }
+            }
+            if (samples == 0) { Speak?.Invoke("ПЕРЕПИСЬ", "❌ Мозг пуст — распределять нечего."); return; }
+            double scale = (double)total / samples;
+            var assigned = new long[NeuronBuckets.Length];
+            long matched = 0;
+            for (int i = 0; i < counts.Length; i++) matched += counts[i];
+            for (int i = 0; i < assigned.Length; i++)
+                assigned[i] = (long)Math.Round(counts[i] * scale + (matched > 0 ? generic * scale * counts[i] / matched : generic * scale / assigned.Length));
+            long sum = assigned.Sum();
+            assigned[0] += total - sum; // остаток округления — старшей стране, чтобы сошлось до нейрона
+            foreach (var c in Countries) c.Neurons = 0;
+            for (int i = 0; i < NeuronBuckets.Length; i++)
+            {
+                var c = Countries.FirstOrDefault(x => x.Name == NeuronBuckets[i].Country);
+                if (c != null) c.Neurons = assigned[i];
+            }
+            Save();
+            var rep = new List<string> { "🧠 ПЕРЕПИСЬ ЗАВЕРШЕНА. Мозг " + total.ToString("N0") + " нейронов распределён по странам:" };
+            for (int i = 0; i < NeuronBuckets.Length; i++)
+                rep.Add("• " + NeuronBuckets[i].Country + " — " + assigned[i].ToString("N0") + " (" + (total > 0 ? assigned[i] * 100 / total : 0) + "%)");
+            BigEvent?.Invoke(string.Join(Environment.NewLine, rep));
+            Speak?.Invoke("ПЕРЕПИСЬ", "🧠 Готово! Открой «Микро-мир» — колонка «Нейроны» заполнена, страны получили мозг по сферам.");
         }
     }
 }
