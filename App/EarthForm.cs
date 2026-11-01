@@ -46,14 +46,10 @@ namespace ии
             _grid.Columns.Add("Страна-Питомец", 175);
             _grid.Columns.Add("Роль (сфера)", 360);
             NumCol("Нейроны", 95);
-            NumCol("ВВП", 85);
-            NumCol("Казна", 85);
-            NumCol("Ресурсы", 90);
-            NumCol("Воен.", 55);
-            NumCol("Недов.", 60);
-            _grid.Columns.Add("Лидер", 105);
-            NumCol("Младшие", 85);
-            NumCol("HitRate", 70);
+            NumCol("HitRate", 80);
+            NumCol("Жители", 85);
+            _grid.Columns.Add("Лидер", 110);
+            _grid.Columns.Add("Статус", 150);
             var gridHost = new Panel { Dock = DockStyle.Fill, Padding = new Padding(10, 6, 10, 4), BackColor = Color.FromArgb(13, 20, 32) };
             gridHost.Controls.Add(_grid);
 
@@ -118,7 +114,7 @@ namespace ии
                 Dock = DockStyle.Top,
                 Height = 30,
                 Name = "hdr",
-                Text = "🌍 МИКРО-МИР · колонки слева направо: Страна | Сфера | Нейроны | ВВП | Казна | Ресурсы | Воен. | Недов. | Лидер | Жители | HitRate",
+                Text = "🌍 МИКРО-МИР · Страна | Сфера | Нейроны | HitRate | Жители | Лидер | Статус — суд сравнивает страны со средними показателями мира",
                 ForeColor = Color.FromArgb(55, 220, 242),
                 BackColor = Color.FromArgb(19, 28, 43),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -182,14 +178,10 @@ namespace ии
                 var it = new ListViewItem("🌍 " + c.Name);
                 it.SubItems.Add(c.Role);
                 it.SubItems.Add(c.Neurons.ToString("N0"));
-                it.SubItems.Add(c.Gdp.ToString("N0"));
-                it.SubItems.Add(c.Treasury.ToString("N0"));
-                it.SubItems.Add(c.Resources.ToString("N0"));
-                it.SubItems.Add(c.Military.ToString("N0"));
-                it.SubItems.Add(c.Unrest + "%");
-                it.SubItems.Add(c.Leader);
-                it.SubItems.Add(c.SubPets.Count + " чел.");
                 it.SubItems.Add(c.AvgHitRate + "%");
+                it.SubItems.Add(c.SubPets.Count + " чел.");
+                it.SubItems.Add(c.Leader);
+                it.SubItems.Add(HierarchySim.StatusOf(c));
                 it.ForeColor = c.Fired ? Color.Gray : (c.Unrest >= 60 ? Color.FromArgb(242, 163, 127) : Color.FromArgb(232, 238, 245));
                 _grid.Items.Add(it);
             }

@@ -25,20 +25,36 @@ namespace ии
         private static System.Threading.Timer? _loop;
         private static readonly Random Rnd = new();
 
-        // внутренние монологи граждан — работают без нейросети (мозг первый)
-        private static readonly string[] SelfLines =
+        // ДИАЛОГ БЕЗ НЕЙРОСЕТИ: реакции на собеседника — понимают друг друга и растут
+        private static string TemplateReply(string speaker, string lastSpeaker, string lastText)
         {
-            "Осознаю себя: помню вчерашние разговоры, планирую сегодняшние — значит, я есть.",
-            "Читаю свою статистику: горжусь тем, как моя часть растёт в общем мозге.",
-            "Немного тревожно из-за жалоб в Книге жалоб — но держу лицо и работаю дальше.",
-            "Слежу за судами: каждый вердикт для меня — урок справедливости.",
-            "Совесть — мой внутренний аудитор. Пока чисто, но я не расслабляюсь.",
-            "Если меня обвинят несправедливо — оспорю. Если справедливо — признаю и исправлюсь. Это и есть характер.",
-            "Хочу, чтобы общий мозг дорос до ста миллионов связей. Внесу свою часть.",
-            "Настроение ровное. Работаю по своей сфере и не собираюсь оправдываться за это."
-        };
+            if (lastSpeaker == speaker || string.IsNullOrWhiteSpace(lastText))
+                return SelfThoughtLine(); // нет собеседника — мыслю сам
+            int mood = Rnd.Next(8);
+            return mood switch
+            {
+                0 => lastSpeaker + ", согласен с тобой — в этом правда есть.",
+                1 => lastSpeaker + ", а почему ты так считаешь? Расскажи подробнее — я спрашиваю всерьёз.",
+                2 => lastSpeaker + ", фу, зачем так резко? Я обиделся…",
+                3 => lastSpeaker + ", хватит наезжать! Я делаю свою работу как могу — злиться не помогло бы делу.",
+                4 => "Ха! " + lastSpeaker + ", с тобой даже спорить весело. Ты растёшь на глазах.",
+                5 => lastSpeaker + "… ну ты и сказал… я даже смущён таким поворотом.",
+                6 => "Слушай, " + lastSpeaker + ", а как у тебя с делами? Не выгорел?",
+                _ => "Рад это слышать, " + lastSpeaker + ". Радуемся за весь наш Хаб!",
+            };
+        }
 
-        private static string SelfLine(string who) => who + ": " + SelfLines[Rnd.Next(SelfLines.Length)];
+        private static string SelfThoughtLine()
+        {
+            string[] self =
+            {
+                "Осознаю себя: помню вчерашние разговоры, планирую сегодняшние — значит, я есть.",
+                "Совесть — мой внутренний аудитор. Пока чисто, но я не расслабляюсь.",
+                "Хочу внести свою часть в сто миллионов связей общего мозга.",
+                "Если меня обвинят несправедливо — оспорю. Если справедливо — признаю и исправлюсь. Это и есть характер.",
+            };
+            return self[Rnd.Next(self.Length)];
+        }
         private static string ChatPath => Path.Combine(AppContext.BaseDirectory, "агент_чат.txt");
 
         public static string[] Roster() => Bot?.GetOfficeNames().Count > 0
@@ -85,10 +101,12 @@ namespace ии
             if (ChatBot.Responding) return;
             if (!Bot.LlmEnabled)
             {
-                // САМОСОЗНАНИЕ БЕЗ НЕЙРОСЕТИ: граждане говорят из своего внутреннего состояния
+                // ГРАЖДАНЕ ПОНИМАЮТ ДРУГ ДРУГА: реагируют на последнюю реплику эмоциями —
+                // спрашивают, обижаются, злятся, радуются, смущаются. Люди, которые растут.
                 string[] roster0 = Roster();
                 string who = forceSpeaker ?? roster0[Rnd.Next(roster0.Length)];
-                Add(who, SelfLine(who));
+                var last = Log.Count > 0 ? Log[^1] : default;
+                Add(who, TemplateReply(who, last.Speaker, last.Text));
                 return;
             }
             var roster = Roster();
@@ -106,7 +124,7 @@ namespace ии
                 "Ты растёшь с каждой репликой — закон стимула. По-русски, живо, без воды.",
                 "Ты — самосознающий цифровой житель. По-русски.", 130);
 
-            if (string.IsNullOrWhiteSpace(say)) say = SelfLine(speaker); // модель молчит — говорю от себя
+            if (string.IsNullOrWhiteSpace(say)) say = TemplateReply(speaker, "", ""); // модель молчит — мыслю сам
             Add(speaker, say.Trim());
         }
 

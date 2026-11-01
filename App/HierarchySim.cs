@@ -50,6 +50,41 @@ namespace ии
             Deputies.AddRange(citizens.OrderByDescending(s => s.HitRate).Take(4));
         }
 
+        // ПЕРЕВЫБОРЫ: жители голосуют (HitRate + лояльность/2) — топ становятся депутатами
+        public void Reelect(IEnumerable<SubPet> citizens)
+        {
+            foreach (var s in citizens) s.Votes = s.HitRate + s.Loyalty / 2;
+            int seats = Math.Clamp(citizens.Count() / 2, 3, 5);
+            Deputies.Clear();
+            Deputies.AddRange(citizens.OrderByDescending(s => s.Votes).Take(seats));
+        }
+
+        // ВЫБОРЫ ЛИДЕРА ЧЕРЕЗ ДУМУ: жители избирают депутатов (топ по голосам),
+        // затем депутаты голосуют за кандидатов — победитель становится лидером.
+        // Текущий обвинённый лидер в кандидатах не участвует.
+        public (string Leader, string Report) ElectLeader(List<SubPet> citizens, string accusedName)
+        {
+            foreach (var s in citizens) s.Votes = s.HitRate + s.Loyalty / 2;
+            int seats = Math.Clamp(citizens.Count() / 2, 3, 5);
+            Deputies.Clear();
+            Deputies.AddRange(citizens.OrderByDescending(s => s.Votes).Where(s => s.Name != accusedName).Take(seats));
+            var lines = new List<string> { "🏛 Жители избрали Думу: " + string.Join(", ", Deputies.Select(d2 => d2.Name)) };
+            foreach (var s in citizens) s.Votes = 0;
+            foreach (var dep in Deputies)
+            {
+                var cand = citizens.Where(s => s.Name != accusedName)
+                    .OrderByDescending(s => s.HitRate * 2 + s.Loyalty + (s.Conscience + dep.Conscience) / 3)
+                    .FirstOrDefault();
+                if (cand == null) continue;
+                cand.Votes += Math.Max(1, dep.HitRate / 2);
+                lines.Add("🏛 Депутат " + dep.Name + " голосует за " + cand.Name + ".");
+            }
+            var top = citizens.OrderByDescending(s => s.Votes).First();
+            lines.Add("🏛 Дума единогласно: новый лидер — " + top.Name + ".");
+            HierarchySim.Speak?.Invoke("СУД · ДУМА", string.Join("\n", lines));
+            return (top.Name, "Выборы через Думу (депутаты: " + string.Join(", ", Deputies.Select(d2 => d2.Name)) + ").");
+        }
+
         // Быстрое голосование: вес голоса депутата = (HitRate + Loyalty) / 25 —
         // числовые веса фракций, никакой магии: кто полезнее, тот весомее
         public (bool Approved, string Report) FastVote(string question)
@@ -309,6 +344,7 @@ namespace ии
                 c.Unrest = Math.Clamp(c.Unrest, 0, 100);
             }
             ComplaintBook.Prune(); // старые жалобы истекают — как в реальности
+            if (Tick % 30 == 0) ReelectDumas(); // в Думу тоже выбираются люди
             // недовольство живёт на шкале 0-100 (иначе пороги суда теряют смысл)
             Court.Tick();
             if (Rnd.Next(25) == 0) SelfTalk(); // граждане иногда думают вслух
@@ -496,6 +532,20 @@ namespace ии
             }
         }
 
+        // Перевыборы Дум: жители каждой страны избирают депутатов заново
+        public static void ReelectDumas()
+        {
+            foreach (var c in Countries.Where(x => !x.Fired && x.SubPets.Count > 0))
+            {
+                foreach (var s2 in c.SubPets) s2.Votes = s2.HitRate + s2.Loyalty / 2;
+                var before = string.Join(",", c.Duma.Deputies.Select(d2 => d2.Name));
+                c.Duma.Reelect(c.SubPets);
+                var after = string.Join(",", c.Duma.Deputies.Select(d2 => d2.Name));
+                if (after != before)
+                    Speak?.Invoke("ВЫБОРЫ ДУМЫ", "🗳 «" + c.Name + "»: жители переизбрали Думу — депутаты: " + after + ".");
+            }
+        }
+
         // ═══ СУД: обвинение -> защита (оспорить/признать) -> вердикт ═══
         public static class Court
         {
@@ -521,6 +571,17 @@ namespace ии
         private static readonly Dictionary<string, int> _lastVerdictTick = new();
         private const int CourtCooldownTicks = 150; // ~10 мин: после вердикта страну не судят повторно
         private const int CourtQueueMax = 2;        // календарь суда не переполняется
+
+        // Статус страны для таблицы Микро-мира: суд, кулдаун, напряжение или норма
+        public static string StatusOf(StatePet c)
+        {
+            if (_activeCase != null && _activeCase.Country == c.Name) return "⚖ под судом";
+            if (_courtQueue.Any(x => x.Country == c.Name)) return "⚖ в очереди суда";
+            if (_lastVerdictTick.TryGetValue(c.Name, out int last) && Tick - last < CourtCooldownTicks)
+                return "кулдаун суда " + (CourtCooldownTicks - (Tick - last)) + " тик.";
+            if (c.Unrest >= 60) return "напряжена";
+            return "норм";
+        }
 
         public static CourtCase? CourtOpen(StatePet c, int complaints)
         {
@@ -602,23 +663,28 @@ namespace ии
                 ComplaintBook.Clear(cc2.Country); // жалобы рассмотрены — дело закрыто
                 return;
             }
-            // Заслуги против обвинения: растущая экономика или дельный лидер — смягчают
-            bool merit = c2.LastGrowth >= 25 || (leader2 != null && leader2.HitRate >= 75) || c2.Treasury > c2.Gdp / 20;
-            bool guilty = (cc2.Complaints >= 8 || (c2.Unrest >= 70 && cc2.Complaints >= 6) ||
-                           (avgHit > 0 && leader2 != null && leader2.HitRate < avgHit - 15 && cc2.Complaints >= 6)) && !merit;
+            // ВЕРДИКТ ПО СРЕДНИМ ПО МИРУ: суд сравнивает показатели страны со всеми странами.
+            var act = Countries.Where(x => !x.Fired && x.SubPets.Count > 0).ToList();
+            double worldHit = act.Count == 0 ? 0 : act.Average(x => x.SubPets.Average(s2 => s2.HitRate));
+            long worldGrowth = act.Count == 0 ? 0 : (long)act.Average(x => (double)x.LastGrowth);
+            int cHit = c2.SubPets.Count == 0 ? 0 : (int)c2.SubPets.Average(s2 => s2.HitRate);
+            bool underperforming = cHit < (int)worldHit - 5;                                  // HitRate хуже среднего мира на 5+ пунктов
+            bool stagnating = worldGrowth > 0 && c2.LastGrowth < worldGrowth / 2;              // растёт вдвое медленнее мира
+            bool guilty = underperforming || stagnating;
+
             if (guilty && leader2 != null)
             {
-                foreach (var s2 in c2.SubPets) s2.Votes = s2.HitRate + s2.Loyalty / 2;
-                var top = c2.SubPets.OrderByDescending(s2 => s2.Votes).First();
+                // ВИНОВЕН: отстранение и ВЫБОРЫ ЧЕРЕЗ ДУМУ
+                var (newLeader, dumaReport) = c2.Duma.ElectLeader(c2.SubPets, cc2.Accused);
                 string old = c2.Leader;
-                c2.Leader = top.Name;
+                c2.Leader = newLeader;
                 c2.LeaderTerms = 0;
                 c2.Unrest = 25;
-                c2.Duma.Reconstitute(c2.SubPets);
-                _lastVerdict = "ВИНОВЕН: жалобы подтверждены (" + cc2.Complaints + " свежих), заслуг не найдено (рост " + c2.LastGrowth + "/тик). Лидер " + old + " отстранён, новый лидер — " + top.Name + ".";
+                _lastVerdict = "ВИНОВЕН по средним по миру: HitRate страны " + cHit + "% против мирового " + worldHit.ToString("F0") +
+                               "%, рост " + c2.LastGrowth + " против мирового " + worldGrowth + "/тик. Лидер " + old + " отстранён. " + dumaReport;
                 cc2.Verdict = _lastVerdict;
                 BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Verdict);
-                try { File.AppendAllText(ZeroLog, "СУД · «" + c2.Name + "»: " + old + " → " + top.Name + " по вердикту суда.\n"); } catch { }
+                try { File.AppendAllText(ZeroLog, "СУД · «" + c2.Name + "»: " + old + " → " + newLeader + " — выборы через Думу по вердикту суда.\n"); } catch { }
             }
             else
             {
@@ -626,16 +692,22 @@ namespace ии
                 var liar = c2.SubPets.Where(s2 => s2.Name != cc2.Accused).OrderBy(s2 => s2.Loyalty).FirstOrDefault();
                 if (liar != null) liar.Loyalty = Math.Max(0, liar.Loyalty - 2);
                 c2.Unrest = Math.Max(0, c2.Unrest - 8);
-                _lastVerdict = merit
-                    ? "ОПРАВДАН: экономика растёт (" + c2.LastGrowth + "/тик), казна " + c2.Treasury.ToString("N0") + " — заслуги перекрывают " + cc2.Complaints + " жалоб."
-                    : "ОПРАВДАН: фактов недостаточно (" + cc2.Complaints + " жалоб, недовольство " + c2.Unrest + "%). Ложный жалобщик понижен.";
+                _lastVerdict = "ОПРАВДАН: показатели в норме — HitRate страны " + cHit + "% при среднем по миру " + worldHit.ToString("F0") +
+                               "%, рост " + c2.LastGrowth + " при среднем " + worldGrowth + ". Ложный жалобщик понижен.";
                 cc2.Verdict = _lastVerdict;
                 Speak?.Invoke("СУД · ВЕРДИКТ", "⚖ " + _lastVerdict);
-                BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Accused + " оправдан — защита сработала.");
+                BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Accused + " оправдан — показатели не хуже мировых.");
             }
             _lastVerdictTick[cc2.Country] = Tick;
             ComplaintBook.Clear(cc2.Country); // дело рассмотрено — жалобы списаны
         }
+
+        // ═══ ИЕРАРХИЯ ВЛАСТИ: Эйнштейн -> Ноль -> Думы стран -> жители ═══
+        // Эйнштейн — Создатель, неприкосновенен. Ноль — правая рука: суровый
+        // надзиратель, хочет процветания, может почти всё, кроме удаления
+        // себя и Эйнштейна. Все важные решения Ноля сначала проходят Думу.
+        public const string CreatorName = "Эйнштейн";
+        public const string OverseerName = "Ноль";
 
         public static string CourtReport()
         {
