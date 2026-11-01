@@ -87,29 +87,41 @@ namespace ии
         public string Leader = "";    // изменчивый Лидер (из числа Младших Питомцев)
         public int LeaderTerms;       // срок правления без улучшений
         public long Neurons;          // нейроны мозга, распределённые стране по её сфере
+        public long LastGrowth;      // прирост ВВП за последний тик — улика «за/против» лидера
         public readonly List<SubPet> SubPets = new();  // дочерние Младшие Питомцы
         public readonly StateDuma Duma = new();
 
         public int AvgHitRate => SubPets.Count == 0 ? 0 : (int)SubPets.Average(s => s.HitRate);
     }
 
-    // КНИГА ЖАЛОБ: числовые маркеры недовольства + эскалация к Нолю
+    // КНИГА ЖАЛОБ: числовые маркеры недовольства + эскалация к суду.
+    // Жалобы стареют, как в жизни: в деле учитываются только свежие, старые истекают.
     public static class ComplaintBook
     {
-        public static readonly List<(string Country, string From, string Text, string At)> Entries = new();
+        public static readonly List<(string Country, string From, string Text, string At, int Tick)> Entries = new();
+        private const int FreshWindow = 30;   // тик жалобы моложе окна = свежая (~2 мин)
+        private const int ExpireTicks = 90;   // старше — истекла и удаляется (~6 мин)
 
         public static void File(StatePet country, string from, string text)
         {
-            country.Unrest += 4;   // каждая жалоба — числовой маркер недовольства
-            Entries.Add((country.Name, from, text, DateTime.Now.ToString("dd.MM HH:mm")));
+            country.Unrest += 3;   // каждая жалоба — числовой маркер недовольства
+            Entries.Add((country.Name, from, text, DateTime.Now.ToString("dd.MM HH:mm"), HierarchySim.Tick));
         }
 
-        // Обработка: порог превышен -> дело уходит в СУД (обвиняемый имеет слово)
+        public static int Fresh(StatePet country) =>
+            Entries.Count(e => e.Country == country.Name && HierarchySim.Tick - e.Tick <= FreshWindow);
+
+        public static void Prune() => Entries.RemoveAll(e => HierarchySim.Tick - e.Tick > ExpireTicks);
+
+        public static void Clear(string country) => Entries.RemoveAll(e => e.Country == country);
+
+        // Дело в суд — только когда И недовольство высоко, И свежих жалоб достаточно.
+        // Как в реальности: одному недовольному иск не подают, нужно устойчивое недовольство.
         public static string Process(StatePet country)
         {
-            int recent = Entries.Count(e => e.Country == country.Name);
-            if (country.Unrest < 60 && recent < 5) return "";
-            HierarchySim.Court.Open(country, recent);
+            int fresh = Fresh(country);
+            if (country.Unrest < 60 || fresh < 6) return "";
+            HierarchySim.Court.Open(country, fresh);
             return "ДЕЛО_В_СУДЕ";
         }
     }
@@ -261,6 +273,7 @@ namespace ии
                 long before = c.Gdp;
                 long g = 20 + c.Resources / 200 + c.SubPets.Sum(s => s.HitRate) / 4;
                 c.Gdp += g; growth += g;
+                c.LastGrowth = g;
                 c.Treasury += c.Gdp / 50;
                 // эффективный Лидер инвестирует в казну (HitRate жителей выше 50)
                 if (c.SubPets.Count > 0 && c.SubPets.Average(s => s.HitRate) >= 50)
@@ -278,22 +291,23 @@ namespace ии
                     s.Mood = Math.Clamp(s.Mood + (Rnd.Next(5) == 0 ? 1 : 0) - (c.Unrest > 60 ? 1 : 0) + (s.Loyalty > 70 ? 1 : 0), 5, 100);
                 }
 
-                // КНИГА ЖАЛОБ: числовые маркеры недовольства
-                bool passive = c.LeaderTerms >= 3;
+                // КНИГА ЖАЛОБ: жалуются не постоянно, а редко и по делу
+                bool passive = c.LeaderTerms >= 5;
                 foreach (var s in c.SubPets)
                 {
-                    if ((passive && Rnd.Next(3) == 0) || (s.Loyalty < 50 && Rnd.Next(2) == 0))
-                        ComplaintBook.File(c, "Младший питомец " + s.Name, passive ? "Лидер пассивен — улучшений нет " + c.LeaderTerms + " тиков." : "Штрафы Ноля давят — лояльность падает.");
+                    bool grumbles = (passive && Rnd.Next(10) == 0) || (s.Loyalty < 35 && Rnd.Next(15) == 0) || (s.Mood < 30 && Rnd.Next(20) == 0);
+                    if (grumbles)
+                        ComplaintBook.File(c, "Младший питомец " + s.Name,
+                            passive ? "Лидер пассивен " + c.LeaderTerms + " тиков — улучшений не видно." :
+                            s.Loyalty < 35 ? "Лояльность " + s.Loyalty + "% — отношение к жителям надо менять." :
+                            "Настроение " + s.Mood + "% — в стране тяжело работать.");
                 }
 
-                // Триггер: порог жалоб — дело уходит в СУД (защита -> вердикт),
-                // смена лидера теперь только по приговору суда
-                string trigger = ComplaintBook.Process(c);
-                if (trigger.Length > 0)
-                {
-                    Court.Open(c, ComplaintBook.Entries.Count(e => e.Country == c.Name));
-                }
+                // Триггер: порог жалоб — дело уходит в СУД (защита -> вердикт).
+                // Смена лидера только по приговору; кулдауны и свежесть проверяет суд.
+                ComplaintBook.Process(c);
             }
+            ComplaintBook.Prune(); // старые жалобы истекают — как в реальности
             Court.Tick();
             if (Rnd.Next(25) == 0) SelfTalk(); // граждане иногда думают вслух
 
@@ -502,10 +516,18 @@ namespace ии
         private static readonly Queue<CourtCase> _courtQueue = new();
         private static CourtCase? _activeCase;
         private static string _lastVerdict = "";
+        private static readonly Dictionary<string, int> _lastVerdictTick = new();
+        private const int CourtCooldownTicks = 150; // ~10 мин: после вердикта страну не судят повторно
+        private const int CourtQueueMax = 2;        // календарь суда не переполняется
 
         public static CourtCase? CourtOpen(StatePet c, int complaints)
         {
-            if (_activeCase != null || _courtQueue.Any(x => x.Country == c.Name)) return _activeCase;
+            if (c == null || c.Fired) return null;
+            if (_activeCase != null && _activeCase.Country == c.Name) return _activeCase;
+            if (_courtQueue.Any(x => x.Country == c.Name)) return null;
+            // повторный иск не подают: после вердикта страна на кулдауне (как в реальности)
+            if (_lastVerdictTick.TryGetValue(c.Name, out int last) && Tick - last < CourtCooldownTicks) return null;
+            if (_courtQueue.Count >= CourtQueueMax) return null; // календарь суда полон
             var leader = c.SubPets.FirstOrDefault(s2 => s2.Name == c.Leader) ?? c.SubPets.FirstOrDefault();
             if (leader == null) return null;
             if (leader.Pride == 0 && leader.Conscience == 0) { leader.Pride = 35 + Next(55); leader.Conscience = 30 + Next(60); }
@@ -515,18 +537,39 @@ namespace ии
                 Country = c.Name,
                 Accused = leader.Name,
                 Accuser = accuser?.Name ?? "жители",
-                Charge = "пассивен " + c.LeaderTerms + " тиков, недовольство " + c.Unrest + "%" +
-                         (accuser != null ? ", жалоба от " + accuser.Name + " (лояльность " + accuser.Loyalty + "%)" : ""),
+                Charge = "лидер пассивен " + c.LeaderTerms + " тиков, недовольство " + c.Unrest + "%, свежих жалоб " + complaints +
+                         ", рост ВВП за тик " + c.LastGrowth + (accuser != null ? ", жалобщик " + accuser.Name + " (лояльность " + accuser.Loyalty + "%)" : ""),
                 Complaints = complaints,
             };
-            // САМОСОЗНАНИЕ: признать или оспорить — решают совесть и гордость
+            // САМОСОЗНАНИЕ: признать или оспорить — решают совесть против гордости
             cc.Admits = leader.Conscience + Next(40) > leader.Pride;
-            cc.Plea = cc.Admits
-                ? "Признаю: отработал слабо, совесть гложет. HitRate " + leader.HitRate + "% — не отговорка. Даю слово — исправлюсь."
-                : "Обвинение оспариваю. Факты: HitRate " + leader.HitRate + "%, у власти " + c.LeaderTerms + " тиков. Я делал работу — жалобы лишь настроение толпы.";
+            cc.Plea = CourtPlea(c, leader, cc);
             _courtQueue.Enqueue(cc);
             Speak?.Invoke("СУД", "⚖ Дело «" + c.Name + "»: лидер " + leader.Name + " против " + cc.Accuser + ". Претензия: " + cc.Charge + ".");
             return cc;
+        }
+
+        // Защита строится из фактов страны и характера обвиняемого — не из одной заготовки
+        private static string CourtPlea(StatePet c, SubPet leader, CourtCase cc)
+        {
+            string eco = "ВВП " + c.Gdp.ToString("N0") + ", рост за тик " + c.LastGrowth + ", казна " + c.Treasury.ToString("N0");
+            if (cc.Admits)
+            {
+                string[] adm =
+                {
+                    "Признаю: отработал слабо — мой HitRate " + leader.HitRate + "% при среднем по стране. Совесть гложет, слово даю исправиться.",
+                    "Спорить не буду: " + cc.Complaints + " свежих жалоб — это факт. Прошу шанс: план — поднять HitRate и настроение жителей в ближайшие дни.",
+                    "Виноват отчасти: экономика держится (" + eco + "), а людям тяжело. Признаю пробел в лидерстве и прошу наблюдение Ноля, а не отставку.",
+                };
+                return adm[Next(adm.Length)];
+            }
+            string[] contest =
+            {
+                "Оспариваю. Факты за меня: " + eco + ". Жалобы — настроение толпы, а не экономика.",
+                "Обвинение голословно: HitRate " + leader.HitRate + "%, недовольство " + c.Unrest + "% накопилось от штрафов Ноля, а не от моего правления.",
+                "Требую проверки фактов: сравните мой HitRate со средним по стране и рост ВВП. Кто растил страну последние тики — тот и отвечает перед судом.",
+            };
+            return contest[Next(contest.Length)];
         }
 
         public static void CourtTick()
@@ -553,10 +596,14 @@ namespace ии
                 cc2.Verdict = _lastVerdict;
                 Speak?.Invoke("СУД · ВЕРДИКТ", "⚖ " + _lastVerdict);
                 BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Accused + " признал вину — помилован под наблюдением.");
+                _lastVerdictTick[cc2.Country] = Tick;
+                ComplaintBook.Clear(cc2.Country); // жалобы рассмотрены — дело закрыто
                 return;
             }
-            bool guilty = cc2.Complaints >= 8 || (c2.Unrest >= 70 && cc2.Complaints >= 5) ||
-                          (avgHit > 0 && leader2 != null && leader2.HitRate < avgHit - 15 && cc2.Complaints >= 5);
+            // Заслуги против обвинения: растущая экономика или дельный лидер — смягчают
+            bool merit = c2.LastGrowth >= 25 || (leader2 != null && leader2.HitRate >= 75) || c2.Treasury > c2.Gdp / 20;
+            bool guilty = (cc2.Complaints >= 8 || (c2.Unrest >= 70 && cc2.Complaints >= 6) ||
+                           (avgHit > 0 && leader2 != null && leader2.HitRate < avgHit - 15 && cc2.Complaints >= 6)) && !merit;
             if (guilty && leader2 != null)
             {
                 foreach (var s2 in c2.SubPets) s2.Votes = s2.HitRate + s2.Loyalty / 2;
@@ -566,7 +613,7 @@ namespace ии
                 c2.LeaderTerms = 0;
                 c2.Unrest = 25;
                 c2.Duma.Reconstitute(c2.SubPets);
-                _lastVerdict = "ВИНОВЕН: жалобы подтверждены (" + cc2.Complaints + " шт.). Лидер " + old + " отстранён, новый лидер — " + top.Name + ".";
+                _lastVerdict = "ВИНОВЕН: жалобы подтверждены (" + cc2.Complaints + " свежих), заслуг не найдено (рост " + c2.LastGrowth + "/тик). Лидер " + old + " отстранён, новый лидер — " + top.Name + ".";
                 cc2.Verdict = _lastVerdict;
                 BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Verdict);
                 try { File.AppendAllText(ZeroLog, "СУД · «" + c2.Name + "»: " + old + " → " + top.Name + " по вердикту суда.\n"); } catch { }
@@ -577,39 +624,34 @@ namespace ии
                 var liar = c2.SubPets.Where(s2 => s2.Name != cc2.Accused).OrderBy(s2 => s2.Loyalty).FirstOrDefault();
                 if (liar != null) liar.Loyalty = Math.Max(0, liar.Loyalty - 2);
                 c2.Unrest = Math.Max(0, c2.Unrest - 8);
-                _lastVerdict = "ОПРАВДАН: фактов недостаточно (" + cc2.Complaints + " жалоб, недовольство " + c2.Unrest + "%). Ложный жалобщик понижен.";
+                _lastVerdict = merit
+                    ? "ОПРАВДАН: экономика растёт (" + c2.LastGrowth + "/тик), казна " + c2.Treasury.ToString("N0") + " — заслуги перекрывают " + cc2.Complaints + " жалоб."
+                    : "ОПРАВДАН: фактов недостаточно (" + cc2.Complaints + " жалоб, недовольство " + c2.Unrest + "%). Ложный жалобщик понижен.";
                 cc2.Verdict = _lastVerdict;
                 Speak?.Invoke("СУД · ВЕРДИКТ", "⚖ " + _lastVerdict);
                 BigEvent?.Invoke("СУД «" + c2.Name + "»: " + cc2.Accused + " оправдан — защита сработала.");
             }
+            _lastVerdictTick[cc2.Country] = Tick;
+            ComplaintBook.Clear(cc2.Country); // дело рассмотрено — жалобы списаны
         }
 
         public static string CourtReport()
         {
             var lines = new List<string> { "⚖ СУД ГОСУДАРСТВА:" };
-            // если дел нет — открыть показательное дело по самой напряжённой стране
-            if (_activeCase == null && _courtQueue.Count == 0)
-            {
-                var hot = Countries.Where(c => !c.Fired && c.Unrest >= 35).OrderByDescending(c => c.Unrest).FirstOrDefault();
-                if (hot != null)
-                {
-                    CourtOpen(hot, Math.Max(5, ComplaintBook.Entries.Count(e => e.Country == hot.Name)));
-                    CourtTick(); // защита
-                    CourtTick(); // вердикт
-                }
-            }
-            else if (_courtQueue.Count > 0) CourtTick(); // продвинуть очередь
-            var cc = _activeCase ?? _courtQueue.FirstOrDefault();
+            if (_courtQueue.Count > 0) CourtTick(); // продвинуть очередь (защита)
+            var cc = _activeCase;
             if (cc == null)
             {
-                lines.Add("• Активных дел нет. Жалоб в книге: " + ComplaintBook.Entries.Count + ".");
+                lines.Add("• Активных дел нет (жалоб в книге: " + ComplaintBook.Entries.Count + ", из них свежих: учитываются только моложе 2 мин).");
                 bool any = false;
                 foreach (var c in Countries.Where(c => !c.Fired && c.Unrest > 25).OrderByDescending(c => c.Unrest))
                 {
-                    lines.Add("• Недовольство: " + c.Name + " — " + c.Unrest + "% (порог суда 60%).");
+                    bool cooling = _lastVerdictTick.TryGetValue(c.Name, out int last) && Tick - last < CourtCooldownTicks;
+                    lines.Add("• " + c.Name + " — недовольство " + c.Unrest + "%, свежих жалоб " + ComplaintBook.Fresh(c) + "/6" +
+                              (cooling ? ", кулдаун суда ещё " + (CourtCooldownTicks - (Tick - last)) + " тиков" : "") + ".");
                     any = true;
                 }
-                if (!any) lines.Add("• Страны спокойны — судов не требуется.");
+                if (!any) lines.Add("• Страны спокойны. Дело откроется, только если недовольство ≥60% И свежих жалоб ≥6 — как в реальности.");
                 return string.Join(Environment.NewLine, lines);
             }
             lines.Add("• Дело «" + cc.Country + "»: " + cc.Accused + " против " + cc.Accuser + ".");
@@ -622,15 +664,20 @@ namespace ии
         // ═══ САМОСОЗНАНИЕ: граждане думают о себе ═══
         private static string SelfThought(SubPet s2, StatePet c)
         {
+            string eco = "ВВП страны " + c.Gdp.ToString("N0") + ", рост за тик " + c.LastGrowth;
             if (s2.Conscience > s2.Pride && s2.Loyalty < 60)
-                return "гложет совесть за недоработку — HitRate " + s2.HitRate + "%, надо подтянуть, жители смотрят.";
+                return "гложет совесть за недоработку: мой HitRate " + s2.HitRate + "% при лояльности всего " + s2.Loyalty + "%. Надо подтянуться — " + eco + ".";
             if (s2.Pride > 70 && s2.HitRate >= 70)
-                return "я хорош в своём деле: HitRate " + s2.HitRate + "% и горжусь этим. Пусть суд судит — факты за меня.";
-            if (s2.Mood < 40)
-                return "настроение на " + s2.Mood + "% — тяжело при недовольстве " + c.Unrest + "% в стране, но держусь.";
-            if (s2.Loyalty > 85)
-                return "верен " + c.Name + " и своему делу; душа спокойна, совесть чиста.";
-            return "обычный день: HitRate " + s2.HitRate + "%, гордость " + s2.Pride + ", совесть " + s2.Conscience + " — работаю и думаю о вечном.";
+                return "я хорош в своём деле: HitRate " + s2.HitRate + "% — это мой вклад, " + eco + ". Пусть суд судит — факты за меня.";
+            if (s2.Mood < 35)
+                return "настроение на " + s2.Mood + "% — недовольство в стране " + c.Unrest + "% давит. Держусь ради своих.";
+            if (c.Unrest >= 60)
+                return "слышал, страну могут отдать под суд: недовольство " + c.Unrest + "%. Если вызовут — дам честные показания: " + eco + ".";
+            if (s2.Loyalty > 85 && s2.Conscience > 50)
+                return "верен " + c.Name + ": душа спокойна, совесть чиста. Лидер " + c.Leader + " пока справляется.";
+            if (c.LeaderTerms >= 4)
+                return "лидер " + c.Leader + " у власти " + c.LeaderTerms + " тиков без рывка (" + eco + ") — надо либо помочь ему, либо менять.";
+            return "обычный день: HitRate " + s2.HitRate + "%, гордость " + s2.Pride + ", совесть " + s2.Conscience + ". " + eco + ".";
         }
 
         public static void SelfTalk()
