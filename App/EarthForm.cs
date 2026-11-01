@@ -135,9 +135,6 @@ namespace ии
             _tick.Tick += (s, e) => DoTick();
             _tick.Start();
             RefreshGrid();
-            // первая открытая перепись: если нейроны ещё не распределялись — раздать автоматически
-            if (!HierarchySim.Countries.Any(c => c.Neurons > 0))
-                BeginInvoke(() => SpeechEngine.Event(_log, HierarchySim.StartNeuronDistribution(), Color.FromArgb(55, 220, 242)));
             SpeechEngine.Event(_log, "🌍 МИКРО-МИР СОТВОРЁН. Стран-питомцев: " + HierarchySim.Countries.Count + ". Младшие питомцы жестко привязаны к своим странам.", Color.FromArgb(55, 220, 242));
         }
 
@@ -186,6 +183,14 @@ namespace ии
             }
             if (_grid.Items.Count > 0) _grid.Items[0].Selected = true;
             _grid.EndUpdate();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            // первая перепись: если нейроны ещё не распределялись — раздать автоматически
+            if (!HierarchySim.Countries.Any(c => c.Neurons > 0))
+                SpeechEngine.Event(_log, HierarchySim.StartNeuronDistribution(), Color.FromArgb(55, 220, 242));
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
