@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ЕРМАКЪ-App</AssemblyName>
+    <RootNamespace>ии</RootNamespace>
+    <!-- Иконка Ермака (мультяшный стиль) — в exe и в заголовок окна -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Серверный сборщик мусора: без него многогигабайтная модель подтормаживала -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <!-- Окно приложения: тот же ChatBot и та же база, что у консольной версии -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.21" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ChatBot.cs" Link="ChatBot.cs" />
+    <Compile Include="..\ChatBotRestored.cs" Link="ChatBotRestored.cs" />
+    <Compile Include="..\MonsterCore.cs" Link="MonsterCore.cs" />
+    <Compile Include="..\ComputerUse.cs" Link="ComputerUse.cs" />
+    <Compile Include="..\ErmakServer.cs" Link="ErmakServer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="words.txt" />
+    <EmbeddedResource Include="..\words.txt" Link="words.txt" />
+    <!-- Конфиг LM Studio едет вместе со сборкой: папка bin тоже умеет датасет и диалоги -->
+    <None Include="..\llm.txt" Link="llm.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

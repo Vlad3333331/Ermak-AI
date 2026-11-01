@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- ЕРМАКЪ — имя приложения; RootNamespace оставлен «ии», чтобы встроенный
+         словарь по-прежнему назывался «ии.words.txt» (на это завязан код бота) -->
+    <AssemblyName>ЕРМАКЪ_AI</AssemblyName>
+    <RootNamespace>ии</RootNamespace>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- GUI-приложение (App/) собирается отдельным проектом — не включать сюда -->
+    <Compile Remove="App\**" />
+    <None Remove="App\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.21" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="words.txt" />
+    <EmbeddedResource Include="words.txt" />
+    <None Update="llm.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ownmodel.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
