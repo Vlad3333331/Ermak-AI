@@ -226,7 +226,7 @@ namespace ии
             gear.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             gear.Click += (s, e) => ShowAutomations();
 
-            sidebar.Controls.AddRange(new Control[] { logo, logoName, newTask, automations, market, organogram, micro, tasksLbl, delBtn, _searchBox, _taskList, avatar, gear });
+            sidebar.Controls.AddRange(new Control[] { logo, logoName, newTask, automations, market, organogram, agentChat, micro, tasksLbl, delBtn, _searchBox, _taskList, avatar, gear });
 
             // ── Правая карточка прогресса ──
             var progressWrap = new Panel { Dock = DockStyle.Right, Width = 248, BackColor = ColBg, Padding = new Padding(10, 52, 12, 10) };
