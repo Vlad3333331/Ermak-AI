@@ -989,6 +989,8 @@ internal sealed partial class ChatBot
 
         // Живой стриминг: MainForm показывает мысль по мере генерации (как DeepSeek/ZCode)
         public static Action<string>? StreamHook;
+        // ВЛАД ЖДЁТ ОТВЕТ: площадь соблюдает тишину для работающих (правилоchemistry нет — правило приличия)
+        public static volatile bool Responding;
         // Статус работы для строки состояния: «питомец работает…», «сверяю с интернетом…»
         public static Action<string>? WorkHook;
         // Живое мышление: MainForm показывает мысли по мере появления (как ZCode/DeepSeek)

@@ -49,6 +49,7 @@ namespace ии
         {
             Bot = bot;
             Load();
+            Add("ЭЙНШТЕЙН · ПРАВИЛО", "Правило площади: переписываться не запрещено. Но пока влад ждёт ответ или граждане заняты работой — помощники молчат. Кто свободен — может общаться.");
             if (_loop != null) return;
             // Живой режим: каждые 40-90 с кто-то из граждан захочет сказать
             _loop = new System.Threading.Timer(_ =>
@@ -79,6 +80,9 @@ namespace ии
         public static void Step(string? forceSpeaker = null)
         {
             if (Bot == null || ChatBot.Muted) return;
+            // ПРАВИЛО ПЛОЩАДИ: пока влад ждёт ответ или граждане заняты работой —
+            // помощники молчат. Свободное время — общаться можно.
+            if (ChatBot.Responding) return;
             if (!Bot.LlmEnabled)
             {
                 // САМОСОЗНАНИЕ БЕЗ НЕЙРОСЕТИ: граждане говорят из своего внутреннего состояния
@@ -102,7 +106,7 @@ namespace ии
                 "Ты растёшь с каждой репликой — закон стимула. По-русски, живо, без воды.",
                 "Ты — самосознающий цифровой житель. По-русски.", 130);
 
-            if (string.IsNullOrWhiteSpace(say)) return;
+            if (string.IsNullOrWhiteSpace(say)) say = SelfLine(speaker); // модель молчит — говорю от себя
             Add(speaker, say.Trim());
         }
 

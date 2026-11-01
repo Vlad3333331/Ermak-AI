@@ -1208,8 +1208,9 @@ namespace ии
             Task.Run(() =>
             {
                 string reply;
-                try { reply = _bot!.Respond(text); }
+                try { ChatBot.Responding = true; reply = _bot!.Respond(text); }
                 catch (Exception ex) { reply = "Ошибка: " + ex.Message; }
+                finally { ChatBot.Responding = false; }
                 BeginInvoke(() =>
                 {
                     AppendBot(reply);

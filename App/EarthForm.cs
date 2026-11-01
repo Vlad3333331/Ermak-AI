@@ -118,7 +118,7 @@ namespace ии
                 Dock = DockStyle.Top,
                 Height = 30,
                 Name = "hdr",
-                Text = "🌍 МИКРО-МИР",
+                Text = "🌍 МИКРО-МИР · колонки слева направо: Страна | Сфера | Нейроны | ВВП | Казна | Ресурсы | Воен. | Недов. | Лидер | Жители | HitRate",
                 ForeColor = Color.FromArgb(55, 220, 242),
                 BackColor = Color.FromArgb(19, 28, 43),
                 TextAlign = ContentAlignment.MiddleCenter,
@@ -126,6 +126,18 @@ namespace ии
             };
             typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
                 ?.SetValue(_grid, true);
+            // видимые тёмные подписи колонок (системные были чёрным по тёмному)
+            _grid.OwnerDraw = true;
+            _grid.DrawColumnHeader += (s, e) =>
+            {
+                using var b = new SolidBrush(Color.FromArgb(19, 28, 43));
+                e.Graphics.FillRectangle(b, e.Bounds);
+                using var f = new Font("Segoe UI", 9F, FontStyle.Bold);
+                TextRenderer.DrawText(e.Graphics, e.Header.Text, f, e.Bounds,
+                    Color.FromArgb(55, 220, 242),
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            };
+            _grid.DrawSubItem += (s, e) => e.DrawDefault = true;
             // Порядок добавления важен для Dock: хроника — в самом низу, над ней кнопки, сетка занимает всё остальное
             Controls.Add(hdr);
             Controls.Add(gridHost);
