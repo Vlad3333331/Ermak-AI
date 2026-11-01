@@ -1312,7 +1312,7 @@ namespace ии
                 AppendProgress("✔  ", ColGreen, "Статьи  ", ColText, st.words.ToString("N0"), ColMuted);
                 AppendProgress("✔  ", ColGreen, "Корни  ", ColText, st.vocab.ToString("N0"), ColMuted);
                 if (learning) AppendProgress("→  ", ColAccent, "Обучение  ", ColText, "включено", ColGreen);
-                else AppendProgress("✔  ", ColGreen, "Обучение  ", ColText, "выключено", ColMuted);
+                else AppendProgress("✔  ", ColGreen, "Обучение  ", ColText, _bot.LearningEnabled && !_bot.IsPaused() ? "ждёт задачи" : "выключено", ColMuted);
                 AppendProgress("→  ", ColAccent, "Задача  ", ColText, cur == "нет" ? "нет активной" : cur, ColText);
                 _progressText.AppendText("\\n");
                 AppendProgress("", ColText, "Темп  ", ColText, learning ? $"~{_ratePerHour:N0}/ч" : "—", ColBlue);

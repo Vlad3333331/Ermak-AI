@@ -143,6 +143,7 @@ namespace ии
         public string Question { get; set; } = "";
         public string Answer { get; set; } = "";
         public bool Learned { get; set; }
+        public HashSet<string>? TokenCache; // ленивый кеш токенов — FindBest не токенизирует вопрос на каждом запросе
     }
 
     /// <summary>Одна реплика в истории разговора.</summary>
@@ -344,6 +345,8 @@ internal sealed class TfIdfBrain
 		public string Text = "";
 
 		public Dictionary<string, double> Vec = new Dictionary<string, double>();
+
+	public double Norm; // кеш нормы IDF-весов — Search не пересчитывает её
 	}
 
 	private readonly object _lock = new object();
@@ -392,10 +395,17 @@ internal sealed class TfIdfBrain
 				Kind = kind,
 				Text = text
 			};
+			// веса сразу масштабируем IDF на момент добавления и кешируем норму:
+			// Search больше не гоняет Math.Log по каждому термину каждого документа
+			double norm2 = 0.0;
 			foreach (KeyValuePair<string, int> item2 in dictionary)
 			{
-				doc.Vec[item2.Key] = 1.0 + Math.Log(item2.Value);
+				double idf2 = Math.Log((double)(_n + 1) / (double)(_df[item2.Key] + 1)) + 1.0;
+				double w2 = (1.0 + Math.Log(item2.Value)) * idf2;
+				doc.Vec[item2.Key] = w2;
+				norm2 += w2 * w2;
 			}
+			doc.Norm = Math.Sqrt(norm2);
 			_docs.Add(doc);
 			_n++;
 		}
@@ -432,28 +442,24 @@ internal sealed class TfIdfBrain
 			}
 			double num3 = 0.0;
 			Doc? doc = null;
+			// быстрый проход: только пересечение с запросом, норма документа уже в кеше
 			foreach (Doc doc2 in _docs)
 			{
+				if (doc2.Norm <= 0.0) continue;
 				double num4 = 0.0;
-				double num5 = 0.0;
 				foreach (KeyValuePair<string, double> item3 in doc2.Vec)
 				{
-					double num6 = Math.Log(((double)_n + 1.0) / ((double)(_df.TryGetValue(item3.Key, out var value3) ? value3 : 0) + 1.0)) + 1.0;
-					double num7 = item3.Value * num6;
-					num5 += num7 * num7;
 					if (dictionary2.TryGetValue(item3.Key, out var value4))
 					{
-						num4 += num7 * value4;
+						num4 += item3.Value * value4;
 					}
 				}
-				if (num5 != 0.0)
+				if (num4 <= 0.0) continue;
+				double num8 = num4 / (doc2.Norm * num2);
+				if (num8 > num3)
 				{
-					double num8 = num4 / (Math.Sqrt(num5) * num2);
-					if (num8 > num3)
-					{
-						num3 = num8;
-						doc = doc2;
-					}
+					num3 = num8;
+					doc = doc2;
 				}
 			}
 			if (doc == null)

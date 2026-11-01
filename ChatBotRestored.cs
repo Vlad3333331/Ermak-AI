@@ -631,7 +631,7 @@ namespace ии
             lock (_knowledgeLock) { knowledgeSnapshot = _knowledge.ToList(); }
             Parallel.ForEach(knowledgeSnapshot, (MemoryEntry e) =>
             {
-                HashSet<string> words = Tokenize(e.Question);
+                HashSet<string> words = e.TokenCache ??= Tokenize(e.Question); // кеш: вопрос токенизируется один раз
                 if (words.Count != 0)
                 {
                     int num = inputWords.Count((string w) => words.Contains(w));
