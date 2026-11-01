@@ -4724,6 +4724,18 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                     return true;
                 }
 
+                // ЗДОРОВЬЕ БАЗЫ: мгновенный отчёт и неблокирующее сжатие
+                if (lower.Contains("проверь базу") || lower.Contains("здоровье базы"))
+                {
+                    reply = CheckDatabaseHealth();
+                    return true;
+                }
+                if (lower.Contains("сожми базу") || lower.Contains("уплотни базу"))
+                {
+                    reply = CompactDatabaseStart();
+                    return true;
+                }
+
                 // СУПЕРВИЗОР «НОЛЬ»
                 if (lower.Contains("ноль"))
                 {
@@ -6569,6 +6581,68 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                 }
             }
             return false;
+        }
+
+        // === ЗДОРОВЬЕ БАЗЫ ЗНАНИЙ ===
+        private string CheckDatabaseHealth()
+        {
+            var sb = new StringBuilder();
+            try
+            {
+                var fi = new FileInfo(Database.DbPath);
+                sb.AppendLine("🩺 Проверка базы знаний:");
+                sb.AppendLine("• Файл: " + Database.DbPath);
+                sb.AppendLine("• Размер: " + (fi.Exists ? (fi.Length / 1024 / 1024) + " МБ" : "нет файла"));
+                using (var con = new SqliteConnection("Data Source=" + Database.DbPath + ";Pooling=false"))
+                {
+                    con.Open();
+                    long neurons = Convert.ToInt64(new SqliteCommand("SELECT COUNT(*) FROM OwnModel", con).ExecuteScalar());
+                    long words = Convert.ToInt64(new SqliteCommand("SELECT COUNT(*) FROM Words", con).ExecuteScalar());
+                    long dialogs = Convert.ToInt64(new SqliteCommand("SELECT COUNT(*) FROM History", con).ExecuteScalar());
+                    long pageSize = Convert.ToInt64(new SqliteCommand("PRAGMA page_size", con).ExecuteScalar());
+                    long freePages = Convert.ToInt64(new SqliteCommand("PRAGMA freelist_count", con).ExecuteScalar());
+                    double freeMb = freePages * (double)pageSize / 1024.0 / 1024.0;
+                    sb.AppendLine($"• Нейронов: {neurons:N0} · Слов: {words:N0} · Диалогов: {dialogs:N0}");
+                    sb.AppendLine("• Мусор внутри файла: " + freeMb.ToString("N1") + " МБ" + (freeMb > 200 ? " → напиши «сожми базу»" : " (чисто)"));
+                    var drive = new DriveInfo(Path.GetFullPath(Database.DbPath));
+                    sb.AppendLine("• Свободно на диске: " + (drive.AvailableFreeSpace / 1024 / 1024 / 1024).ToString("N1") + " ГБ");
+                }
+                sb.AppendLine("✅ База читается, таблицы на месте.");
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine("❌ Проблема с базой: " + ex.Message);
+            }
+            return sb.ToString();
+        }
+
+        private string CompactDatabaseStart()
+        {
+            var fi = new FileInfo(Database.DbPath);
+            long need = fi.Exists ? fi.Length : 0;
+            var drive = new DriveInfo(Path.GetFullPath(Database.DbPath));
+            if (drive.AvailableFreeSpace < need + 512L * 1024 * 1024)
+                return "⚠️ Для сжатия нужно ~" + (need / 1024 / 1024).ToString("N0") + " МБ свободного места на диске. Освободи место и повтори.";
+            Task.Run(() =>
+            {
+                try
+                {
+                    long before = new FileInfo(Database.DbPath).Length;
+                    using (var con = new SqliteConnection("Data Source=" + Database.DbPath + ";Pooling=false"))
+                    {
+                        con.Open();
+                        using var cmd = new SqliteCommand("VACUUM", con) { CommandTimeout = 1800 };
+                        cmd.ExecuteNonQuery();
+                    }
+                    long after = new FileInfo(Database.DbPath).Length;
+                    Out.Learn($"[🧹 База] Сжатие завершено: {before / 1024 / 1024} МБ → {after / 1024 / 1024} МБ.");
+                }
+                catch (Exception ex)
+                {
+                    Out.Learn("[❌ База] Сжатие не удалось: " + ex.Message + " (если база была занята — просто попробуй позже)");
+                }
+            });
+            return "🧹 Начинаю сжатие базы (VACUUM) — это несколько минут. Ход и итог будут в журнале обучения, ничего не выключай.";
         }
     }
 }

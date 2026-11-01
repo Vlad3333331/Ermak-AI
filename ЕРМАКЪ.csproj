@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Windows-only по факту: ComputerUse (скриншоты/клавиатура) живёт в общем коде -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <!-- ЕРМАКЪ — имя приложения; RootNamespace оставлен «ии», чтобы встроенный
@@ -16,6 +18,8 @@
     <!-- GUI-приложение (App/) собирается отдельным проектом — не включать сюда -->
     <Compile Remove="App\**" />
     <None Remove="App\**" />
+    <!-- HierarchySim (Клетки-Страны) — чистая логика без WinForms, нужна и консоли -->
+    <Compile Include="App\HierarchySim.cs" Link="HierarchySim.cs" />
   </ItemGroup>
 
   <ItemGroup>
