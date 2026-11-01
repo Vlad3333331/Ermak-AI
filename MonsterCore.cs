@@ -470,6 +470,48 @@ internal sealed class TfIdfBrain
 		}
 	}
 
+	// Топ-N кандидатов по запросу — для черновика размышления (Thinking):
+	// показываем, какие варианты рассматривал мозг и с какими оценками
+	public List<(string kind, string text, double score)> SearchTop(string query, int n)
+	{
+		var best = new List<(string kind, string text, double score)>();
+		List<string> list = TfIdfStemmer.Tokenize(query);
+		if (list.Count == 0 || n <= 0) return best;
+		Dictionary<string, int> tf = new Dictionary<string, int>();
+		foreach (string w in list)
+			tf[w] = (!tf.TryGetValue(w, out var c)) ? 1 : c + 1;
+		lock (_lock)
+		{
+			if (_docs.Count == 0) return best;
+			Dictionary<string, double> qv = new Dictionary<string, double>();
+			foreach (KeyValuePair<string, int> item in tf)
+			{
+				double idf = Math.Log(((double)_n + 1.0) / ((double)(_df.TryGetValue(item.Key, out var dfv) ? dfv : 0) + 1.0)) + 1.0;
+				qv[item.Key] = (1.0 + Math.Log(item.Value)) * idf;
+			}
+			double qn = Norm(qv);
+			if (qn == 0.0) return best;
+			foreach (Doc d in _docs)
+			{
+				if (d.Norm <= 0.0) continue;
+				double dot = 0.0;
+				foreach (KeyValuePair<string, double> item in d.Vec)
+					if (qv.TryGetValue(item.Key, out var qw))
+						dot += item.Value * qw;
+				if (dot <= 0.0) continue;
+				double score = dot / (d.Norm * qn);
+				int pos = best.Count;
+				while (pos > 0 && best[pos - 1].score < score) pos--;
+				if (pos < n)
+				{
+					if (best.Count >= n) best.RemoveAt(best.Count - 1);
+					best.Insert(pos, (d.Kind, d.Text, score));
+				}
+			}
+			return best;
+		}
+	}
+
 	private static double Norm(Dictionary<string, double> v)
 	{
 		double num = 0.0;

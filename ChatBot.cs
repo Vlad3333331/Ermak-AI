@@ -86,6 +86,7 @@ internal sealed partial class ChatBot
 
             // Фоновый цикл обучения (самоулучшение/ретрейн убран — все ресурсы в поиск связей)
             ComputerUse.Load();
+            LoadThinking();
             ComputerUse.DescribeImage = RespondImage; // скриншоты: «что на экране» через модель со зрением
             ComputerUse.AnalyzeTextHook = (text) =>
             {
@@ -932,6 +933,56 @@ internal sealed partial class ChatBot
 
         // Режим «Ермакъ (свой мозг)»: отвечаем без LM Studio — из своей базы
         private bool _useLlm = false; // мозг первый: LM Studio только по явному выбору
+
+        // НАСТРАИВАЕМЫЙ THINKING: черновик размышления перед ответом (как черновики GLM).
+        // Depth: 1 = краткая мысль, 2 = + кандидаты из базы, 3 = + самопроверка ответа
+        private bool _thinking = true;
+        private int _thinkDepth = 2;
+        private string ThinkingPath => Path.Combine(AppContext.BaseDirectory, "thinking.txt");
+
+        private void LoadThinking()
+        {
+            try
+            {
+                if (!File.Exists(ThinkingPath))
+                {
+                    File.WriteAllText(ThinkingPath, "enabled = 1\ndepth = 2");
+                    return;
+                }
+                foreach (string line in File.ReadAllLines(ThinkingPath))
+                {
+                    string t = line.Trim();
+                    if (t.StartsWith("enabled")) _thinking = t.Contains("1");
+                    else if (t.StartsWith("depth") && int.TryParse(new string(t.Where(char.IsDigit).ToArray()), out int d))
+                        _thinkDepth = Math.Clamp(d, 1, 3);
+                }
+            }
+            catch { }
+        }
+
+        private void SaveThinking()
+        {
+            try { File.WriteAllText(ThinkingPath, "enabled = " + (_thinking ? "1" : "0") + "\ndepth = " + _thinkDepth); } catch { }
+        }
+
+        public bool ThinkingOn => _thinking;
+        public int ThinkDepth => _thinkDepth;
+
+        public string SetThinking(bool on)
+        {
+            _thinking = on;
+            SaveThinking();
+            return on
+                ? "🧠 Thinking включён: перед ответом буду показывать черновик размышления."
+                : "🧠 Thinking выключен: отвечаю сразу, без черновиков.";
+        }
+
+        public string SetThinkDepth(int d)
+        {
+            _thinkDepth = Math.Clamp(d, 1, 3);
+            SaveThinking();
+            return "🧠 Глубина размышления: " + _thinkDepth + "/3 (1 — краткая мысль, 2 — + кандидаты, 3 — + самопроверка).";
+        }
         // Личность: «Ермакъ» или «Альберт Эйнштейн» (персонаж). Сохраняется в файл.
         private string _persona = "Ермакъ";
         public string PersonaName => _persona;
@@ -2717,6 +2768,61 @@ internal sealed partial class ChatBot
                    "история (" + histCount + " реплик). Слова и так пишутся в базу постоянно.";
         }
 
+        private static int words_of(string t)
+        {
+            int n = 0;
+            foreach (string w in t.Split(' ', StringSplitOptions.RemoveEmptyEntries)) n++;
+            return n;
+        }
+
+        // ЧЕРНОВИК РАЗМЫШЛЕНИЯ (как черновики GLM): что вижу в вопросе, какие
+        // кандидаты рассматриваю, на что опираюсь. Глубина настраивается.
+        private string ThinkDraft(string input, string lower)
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.Append("🧠 Думаю: ");
+                string topic = input.Trim().Trim('?', '.', '!').Trim();
+                string[] words = lower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                int qWords = words.Length;
+                string qtype = lower.StartsWith("что такое") || lower.StartsWith("кто такой") || lower.StartsWith("кто такая") ? "определение"
+                    : lower.StartsWith("как ") ? "инструкция"
+                    : lower.Contains("почему") || lower.Contains("зачем") ? "причина"
+                    : qWords <= 3 ? "короткая реплика" : "общий вопрос";
+                sb.Append("вопрос типа «").Append(qtype).Append("»");
+                if (_thinkDepth <= 1) return sb.ToString();
+
+                // кандидаты из базы знаний
+                var cands = _brain.SearchTop(topic, 3);
+                if (cands.Count > 0)
+                {
+                    sb.Append("; рассматриваю ").Append(cands.Count).Append(" кандидат(ов) из базы:");
+                    for (int i = 0; i < cands.Count; i++)
+                    {
+                        string t2 = cands[i].text.Replace("\n", " ");
+                        if (t2.Length > 80) t2 = t2.Substring(0, 80) + "…";
+                        sb.Append("\n  ").Append(i + 1).Append(") [").Append(cands[i].kind).Append("] оценка ").Append(cands[i].score.ToString("0.00")).Append(": ").Append(t2);
+                    }
+                    sb.Append("\nВыбираю лучший по оценке");
+                }
+                else
+                {
+                    sb.Append("; в базе точного не нашлось — собираю ответ из нейронов (").Append(_own.PairCount.ToString("N0")).Append(" связей) и своих знаний");
+                }
+                if (_thinkDepth <= 2) return sb.ToString();
+
+                // самопроверка: не повторяю ли прошлый ответ, хватает ли уверенности
+                string? lastBot = _history.Count > 0 ? _history[^1].Bot : null;
+                sb.Append("; самопроверка: ");
+                sb.Append(cands.Count > 0 && cands[0].score >= 0.45 ? "уверенность достаточная" : "уверенность низкая — подключаю нейроны/сеть");
+                if (lastBot != null && lastBot.Length > 20) sb.Append(", слежу чтобы не повторить прошлый ответ");
+                sb.Append(".");
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
         public string Respond(string input)
         {
             string lower = input.ToLowerInvariant().Trim();
@@ -2743,6 +2849,13 @@ internal sealed partial class ChatBot
             }
 
             Out.Learn("[🤔] Запрос: \"" + input + "\"");
+
+            // THINKING: черновик размышления вслух (настраивается: «думай выкл», «глубина дум 3»)
+            if (_thinking && !TryBotCommand(input, lower, out _) && words_of(input) >= 2)
+            {
+                string draft = ThinkDraft(input, lower);
+                if (draft.Length > 0) ThinkHook?.Invoke(draft);
+            }
 
             // САМОЕ ПЕРВОЕ: личность. Если Ермакъ — Эйнштейн, «кто ты» и любые
             // вопросы о себе отвечаются Эйнштейном, минуя старые заготовки
@@ -4762,6 +4875,27 @@ if (lower.Contains("эйнштейн") && (lower.Contains("стань") || lower
                     HierarchySim.SyncFromOffice(GetOffice());
                     HierarchySim.Load();
                     reply = HierarchySim.SelfAwarenessReport();
+                    return true;
+                }
+                if (lower.Contains("думай выкл") || lower.Contains("thinking выкл") || lower.Contains("без черновиков"))
+                {
+                    reply = SetThinking(false);
+                    return true;
+                }
+                if (lower.Contains("думай вкл") || lower.Contains("thinking вкл") || lower.Contains("с черновиками"))
+                {
+                    reply = SetThinking(true);
+                    return true;
+                }
+                System.Text.RegularExpressions.Match td = System.Text.RegularExpressions.Regex.Match(lower, @"(?:глубина|глубину)\s*(?:дум|мышления)?\s*(\d)");
+                if (td.Success)
+                {
+                    reply = SetThinkDepth(int.Parse(td.Groups[1].Value));
+                    return true;
+                }
+                if (lower.Contains("глубина дум") || lower.Contains("глубина мышления"))
+                {
+                    reply = "🧠 Глубина размышления сейчас: " + _thinkDepth + "/3.";
                     return true;
                 }
 
